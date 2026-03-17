@@ -34,15 +34,21 @@ COURIER_DETECT_ORDER = [COURIER_SAMEDAY, COURIER_FAN]
 # Sameday API
 SAMEDAY_API_URL = "https://api.sameday.ro/api/public/awb/{awb}/awb-history"
 
-# Sameday status states (expeditionStatus.statusState)
-# 1 = picked up, 2 = in transit, 3 = out for delivery, 4 = delivered,
-# 5 = returned, 6 = canceled
-SAMEDAY_STATE_PICKED_UP = 1
-SAMEDAY_STATE_IN_TRANSIT = 2
-SAMEDAY_STATE_OUT_FOR_DELIVERY = 3
-SAMEDAY_STATE_DELIVERED = 4
-SAMEDAY_STATE_RETURNED = 5
-SAMEDAY_STATE_CANCELED = 6
+# Sameday statusStateId values (from real API response awbHistory[].statusStateId)
+# These are integers used to determine normalized parcel status.
+SAMEDAY_STATE_REGISTERED = 1
+SAMEDAY_STATE_PICKED_UP = 2
+SAMEDAY_STATE_OUT_FOR_DELIVERY = 4
+SAMEDAY_STATE_DELIVERED = 5
+SAMEDAY_STATE_IN_TRANSIT = 7
+SAMEDAY_STATE_CENTRAL_DEPOT = 17
+SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT = 18
+
+# Returned/canceled are inferred from statusId or status text (no dedicated statusStateId)
+# Common statusId values:
+# 1 = awaiting pickup, 4 = picked up, 9 = delivered, 23 = registered,
+# 33 = out for delivery, 56 = in transit, 78 = loaded at delivery point,
+# 84 = central depot
 
 # FAN Courier API
 FAN_API_URL = "https://www.fancourier.ro/limit-tracking.php"
@@ -78,7 +84,7 @@ STATUS_LABELS = {
     STATUS_CANCELED: "Canceled",
 }
 
-# Locker/Easybox detection keywords (case-insensitive matching on statusLabel)
+# Locker/Easybox detection keywords (case-insensitive matching on status text)
 # Sameday uses "easybox" in status labels when parcel is deposited in a locker
 SAMEDAY_LOCKER_KEYWORDS = [
     "easybox",

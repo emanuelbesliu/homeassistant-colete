@@ -13,10 +13,12 @@ from .const import (
     SAMEDAY_API_URL,
     FAN_API_URL,
     SAMEDAY_STATE_DELIVERED,
-    SAMEDAY_STATE_RETURNED,
-    SAMEDAY_STATE_CANCELED,
     SAMEDAY_STATE_OUT_FOR_DELIVERY,
     SAMEDAY_STATE_PICKED_UP,
+    SAMEDAY_STATE_IN_TRANSIT,
+    SAMEDAY_STATE_REGISTERED,
+    SAMEDAY_STATE_CENTRAL_DEPOT,
+    SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT,
     SAMEDAY_LOCKER_KEYWORDS,
     FAN_STATUS_DELIVERED,
     FAN_STATUS_OUT_FOR_DELIVERY,
@@ -153,7 +155,7 @@ class ColeteAPI:
         """Track a Sameday parcel.
 
         API: GET https://api.sameday.ro/api/public/awb/{AWB}/awb-history?_locale=ro
-        Returns JSON with expeditionSummary, expeditionHistory, expeditionStatus.
+        Returns JSON with awbNumber, awbHistory, parcelsList, isLockerService.
         """
         url = SAMEDAY_API_URL.format(awb=awb)
         params = {"_locale": "ro"}
@@ -211,69 +213,103 @@ class ColeteAPI:
         return any(keyword in label_lower for keyword in keywords)
 
     def _parse_sameday(self, data: dict[str, Any], awb: str) -> dict[str, Any]:
-        """Parse Sameday API response into normalized format."""
-        summary = data.get("expeditionSummary", {})
-        history = data.get("expeditionHistory", [])
-        status = data.get("expeditionStatus", {})
+        """Parse Sameday API response into normalized format.
 
-        # Determine normalized status
-        state_num = status.get("statusState")
-        if state_num == SAMEDAY_STATE_DELIVERED:
+        Real API structure:
+        {
+            "awbNumber": "...",
+            "awbHistory": [ { statusStateId, statusState, status, statusId,
+                              county, country, transitLocation, statusDate, ... } ],
+            "parcelsList": { "<parcelAwb>": [...] },
+            "isLockerService": bool,
+            "isReturn": bool,
+            ...
+        }
+        """
+        history = data.get("awbHistory", [])
+        is_locker_service = data.get("isLockerService", False)
+        is_return = data.get("isReturn", False)
+
+        # Latest event is first in the awbHistory array
+        latest_event = history[0] if history else {}
+        latest_state_id = latest_event.get("statusStateId")
+
+        # Map statusStateId to normalized status
+        if latest_state_id == SAMEDAY_STATE_DELIVERED:
             normalized_status = STATUS_DELIVERED
-        elif state_num == SAMEDAY_STATE_RETURNED:
-            normalized_status = STATUS_RETURNED
-        elif state_num == SAMEDAY_STATE_CANCELED:
-            normalized_status = STATUS_CANCELED
-        elif state_num == SAMEDAY_STATE_OUT_FOR_DELIVERY:
+        elif latest_state_id == SAMEDAY_STATE_OUT_FOR_DELIVERY:
             normalized_status = STATUS_OUT_FOR_DELIVERY
-        elif state_num == SAMEDAY_STATE_PICKED_UP:
+        elif latest_state_id == SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT:
+            normalized_status = STATUS_OUT_FOR_DELIVERY
+        elif latest_state_id == SAMEDAY_STATE_PICKED_UP:
             normalized_status = STATUS_PICKED_UP
-        elif state_num is not None:
+        elif latest_state_id == SAMEDAY_STATE_IN_TRANSIT:
+            normalized_status = STATUS_IN_TRANSIT
+        elif latest_state_id == SAMEDAY_STATE_CENTRAL_DEPOT:
+            normalized_status = STATUS_IN_TRANSIT
+        elif latest_state_id == SAMEDAY_STATE_REGISTERED:
+            normalized_status = STATUS_PICKED_UP
+        elif latest_state_id is not None:
             normalized_status = STATUS_IN_TRANSIT
         else:
             normalized_status = STATUS_UNKNOWN
 
-        # Check for locker/easybox status via statusLabel string matching.
-        # A parcel waiting at a locker is not yet delivered — it needs pickup.
-        # The statusState may remain 3 (out for delivery) while the label
-        # indicates the parcel is deposited in an easybox/locker.
-        if normalized_status != STATUS_DELIVERED:
-            current_label = (
-                status.get("statusLabel", "") or status.get("status", "") or ""
-            )
-            if self._matches_locker_keywords(current_label, SAMEDAY_LOCKER_KEYWORDS):
+        # Check for returned parcels (isReturn flag or status text)
+        if is_return:
+            normalized_status = STATUS_RETURNED
+        else:
+            # Check status text for return/cancel keywords
+            latest_status_text = (
+                latest_event.get("status", "") or ""
+            ).lower()
+            latest_state_text = (
+                latest_event.get("statusState", "") or ""
+            ).lower()
+            combined_text = f"{latest_status_text} {latest_state_text}"
+            if "retur" in combined_text or "returnat" in combined_text:
+                normalized_status = STATUS_RETURNED
+            elif "anulat" in combined_text:
+                normalized_status = STATUS_CANCELED
+
+        # Locker/easybox detection:
+        # 1. Use the isLockerService flag from the API response
+        # 2. Also check status labels for locker keywords
+        # If parcel is at a locker and not yet delivered, set ready_for_pickup
+        if normalized_status != STATUS_DELIVERED and normalized_status != STATUS_RETURNED:
+            if is_locker_service and latest_state_id in (
+                SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT,
+                SAMEDAY_STATE_OUT_FOR_DELIVERY,
+            ):
                 normalized_status = STATUS_READY_FOR_PICKUP
-            elif history:
-                # Also check the latest history event label
-                latest_label = (
-                    history[0].get("statusLabel", "")
-                    or history[0].get("status", "")
+            else:
+                # Fallback: check status text for locker keywords
+                current_label = (
+                    latest_event.get("status", "")
+                    or latest_event.get("statusState", "")
                     or ""
                 )
                 if self._matches_locker_keywords(
-                    latest_label, SAMEDAY_LOCKER_KEYWORDS
+                    current_label, SAMEDAY_LOCKER_KEYWORDS
                 ):
                     normalized_status = STATUS_READY_FOR_PICKUP
 
-        # Extract latest event for location and timestamp
-        last_event = history[0] if history else {}
-        location = last_event.get("transitLocation", "")
-        county = last_event.get("county", "")
+        # Extract location from latest event
+        location = latest_event.get("transitLocation", "")
+        county = latest_event.get("county", "")
         if county and location:
             location = f"{location}, {county}"
         elif county:
             location = county
 
-        last_update = last_event.get("statusDate", "")
+        last_update = latest_event.get("statusDate", "")
 
         # Delivery info
-        is_delivered = summary.get("delivered", False)
+        is_delivered = normalized_status == STATUS_DELIVERED
         delivered_to = None
         delivered_date = None
         if is_delivered:
-            # Look for delivery event in history
             for event in history:
-                if event.get("statusState") == SAMEDAY_STATE_DELIVERED:
+                if event.get("statusStateId") == SAMEDAY_STATE_DELIVERED:
                     delivered_date = event.get("statusDate", "")
                     break
 
@@ -283,25 +319,31 @@ class ColeteAPI:
             events.append(
                 {
                     "date": event.get("statusDate", ""),
-                    "status": event.get("statusLabel", event.get("status", "")),
+                    "status": event.get("status", event.get("statusState", "")),
                     "location": event.get("transitLocation", ""),
                     "county": event.get("county", ""),
                 }
             )
+
+        # Status detail from the latest event
+        status_detail = latest_event.get(
+            "status", latest_event.get("statusState", "")
+        )
 
         return {
             "courier": COURIER_SAMEDAY,
             "awb": awb,
             "status": normalized_status,
             "status_label": STATUS_LABELS.get(normalized_status, "Unknown"),
-            "status_detail": status.get("statusLabel", status.get("status", "")),
+            "status_detail": status_detail,
             "location": location,
             "last_update": last_update,
             "delivered": is_delivered,
             "delivered_date": delivered_date,
             "delivered_to": delivered_to,
-            "weight": summary.get("weight"),
+            "weight": None,  # Not available in current API response
             "events": events,
+            "is_locker_service": is_locker_service,
         }
 
     def _track_fan(self, awb: str) -> dict[str, Any]:
