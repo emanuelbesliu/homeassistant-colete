@@ -1,0 +1,15 @@
+{
+  "domain": "colete",
+  "name": "Colete - Romanian Parcel Tracking",
+  "codeowners": [
+    "@emanuelbesliu"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/emanuelbesliu/homeassistant-colete",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/emanuelbesliu/homeassistant-colete/issues",
+  "requirements": [
+    "requests>=2.31.0"
+  ],
+  "version": "1.0.0"
+}

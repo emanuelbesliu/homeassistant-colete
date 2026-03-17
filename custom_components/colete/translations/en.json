@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Colete - Track a Parcel",
+        "description": "Add a parcel to track. Enter the AWB number and optionally select the courier. If unsure, use Auto-detect.",
+        "data": {
+          "awb": "AWB Number",
+          "courier": "Courier",
+          "friendly_name": "Friendly name (optional)",
+          "update_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "awb": "The tracking number (AWB) for the parcel",
+          "courier": "Select the courier or use Auto-detect to try all supported couriers",
+          "friendly_name": "A custom name for this parcel (e.g. 'New Laptop')",
+          "update_interval": "How often to check for updates (300-3600 seconds, default 900)"
+        }
+      }
+    },
+    "error": {
+      "awb_not_found": "AWB not found. Please check the number and try again.",
+      "cannot_connect": "Cannot connect to the courier API. Please try again later."
+    },
+    "abort": {
+      "already_configured": "This AWB is already being tracked.",
+      "unknown_error": "An unknown error occurred."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Colete - Parcel Options",
+        "data": {
+          "friendly_name": "Friendly name",
+          "update_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "friendly_name": "A custom name for this parcel",
+          "update_interval": "How often to check for updates (300-3600 seconds)"
+        }
+      }
+    }
+  }
+}

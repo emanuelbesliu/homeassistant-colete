@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Colete - Urmărire Colet",
+        "description": "Adaugă un colet pentru urmărire. Introdu numărul AWB și opțional selectează curierul. Dacă nu ești sigur, folosește Auto-detectare.",
+        "data": {
+          "awb": "Număr AWB",
+          "courier": "Curier",
+          "friendly_name": "Nume personalizat (opțional)",
+          "update_interval": "Interval de actualizare (secunde)"
+        },
+        "data_description": {
+          "awb": "Numărul de urmărire (AWB) al coletului",
+          "courier": "Selectează curierul sau folosește Auto-detectare pentru a încerca toți curierii suportați",
+          "friendly_name": "Un nume personalizat pentru acest colet (ex. 'Laptop Nou')",
+          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde, implicit 900)"
+        }
+      }
+    },
+    "error": {
+      "awb_not_found": "AWB-ul nu a fost găsit. Verifică numărul și încearcă din nou.",
+      "cannot_connect": "Nu se poate conecta la API-ul curierului. Încearcă din nou mai târziu."
+    },
+    "abort": {
+      "already_configured": "Acest AWB este deja urmărit.",
+      "unknown_error": "A apărut o eroare necunoscută."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Colete - Opțiuni Colet",
+        "data": {
+          "friendly_name": "Nume personalizat",
+          "update_interval": "Interval de actualizare (secunde)"
+        },
+        "data_description": {
+          "friendly_name": "Un nume personalizat pentru acest colet",
+          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde)"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+track_parcel:
+  name: Track Parcel
+  description: "Add a new parcel to track by AWB number. Useful for automations that parse delivery emails."
+  fields:
+    awb:
+      name: AWB Number
+      description: "The tracking number (AWB) for the parcel."
+      required: true
+      example: "123456789"
+      selector:
+        text:
+    courier:
+      name: Courier
+      description: "The courier service. Use 'auto' to auto-detect."
+      required: false
+      default: "auto"
+      example: "sameday"
+      selector:
+        select:
+          options:
+            - label: "Auto-detect"
+              value: "auto"
+            - label: "Sameday"
+              value: "sameday"
+            - label: "FAN Courier"
+              value: "fan_courier"
+    friendly_name:
+      name: Friendly Name
+      description: "A custom name for this parcel (optional)."
+      required: false
+      default: ""
+      example: "New Laptop"
+      selector:
+        text:

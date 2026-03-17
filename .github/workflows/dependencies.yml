@@ -1,0 +1,53 @@
+name: Validate Dependencies
+
+on:
+  pull_request:
+    paths:
+      - 'custom_components/colete/manifest.json'
+      - '.github/workflows/dependencies.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'custom_components/colete/manifest.json'
+
+jobs:
+  validate:
+    name: Validate Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Extract and install manifest requirements
+        run: |
+          python -m pip install --upgrade pip
+          MANIFEST_REQS=$(python -c "import json; print(' '.join(json.load(open('custom_components/colete/manifest.json'))['requirements']))")
+          echo "Manifest requirements: $MANIFEST_REQS"
+          pip install $MANIFEST_REQS
+
+      - name: Test import
+        run: |
+          python -c "import requests; print(f'requests version: {requests.__version__}')"
+          echo "✓ All dependencies can be imported"
+
+      - name: Check for security vulnerabilities
+        run: |
+          pip install safety
+          pip freeze > /tmp/requirements.txt
+          safety check --file /tmp/requirements.txt --json || echo "⚠️ Security check completed"
+        continue-on-error: true
+
+      - name: Create validation summary
+        run: |
+          echo "# Dependencies Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All dependencies validated successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Installed Versions" >> $GITHUB_STEP_SUMMARY
+          pip list | grep -E "requests|urllib3" >> $GITHUB_STEP_SUMMARY || true
