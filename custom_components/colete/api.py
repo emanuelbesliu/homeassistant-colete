@@ -22,8 +22,9 @@ from .const import (
     SAMEDAY_LOCKER_KEYWORDS,
     FAN_STATUS_DELIVERED,
     FAN_STATUS_OUT_FOR_DELIVERY,
+    FAN_STATUS_DELIVERING,
     FAN_STATUS_PICKED_UP,
-    FAN_STATUS_IN_TRANSIT,
+    FAN_IN_TRANSIT_CODES,
     FAN_LOCKER_KEYWORDS,
     STATUS_UNKNOWN,
     STATUS_PICKED_UP,
@@ -394,6 +395,7 @@ class ColeteAPI:
             ) from err
 
         # FAN returns empty or error structure for invalid AWBs
+        # Real invalid responses: {"message": "..."} with no events/awbNumber
         if not data or (isinstance(data, dict) and data.get("error")):
             raise ColeteNotFoundError(f"FAN Courier AWB {awb} not found")
 
@@ -403,28 +405,55 @@ class ColeteAPI:
                 raise ColeteNotFoundError(f"FAN Courier AWB {awb} not found")
             data = data[0]
 
+        # Detect invalid AWB: response has "message" but no "events" or "awbNumber"
+        if "message" in data and "events" not in data:
+            raise ColeteNotFoundError(
+                f"FAN Courier AWB {awb} not found: {data.get('message', '')}"
+            )
+
         return self._parse_fan(data, awb)
 
     def _parse_fan(self, data: dict[str, Any], awb: str) -> dict[str, Any]:
-        """Parse FAN Courier API response into normalized format."""
+        """Parse FAN Courier API response into normalized format.
+
+        Real API structure:
+        {
+            "content": "PCA/...",
+            "awbNumber": "...",
+            "date": "2025-08-04 00:00:00",
+            "weight": 5,
+            "confirmation": { "name": "...", "date": "..." },
+            "returnAwbNumber": null,
+            "events": [
+                { "id": "C0", "name": "Expeditie ridicata",
+                  "location": "Bucuresti", "date": "..." },
+                ...
+            ],
+            "serviceId": 1,
+            "optionCodes": ["X"]
+        }
+        Events are ordered chronologically (oldest first, newest last).
+        """
         events_raw = data.get("events", [])
         confirmation = data.get("confirmation", {}) or {}
 
         # Determine status from events
         normalized_status = STATUS_UNKNOWN
         if events_raw:
-            # Events are ordered, last event is most recent
-            last_event = events_raw[-1] if events_raw else {}
+            # Events are ordered chronologically, last event is most recent
+            last_event = events_raw[-1]
             last_status_id = str(last_event.get("id", ""))
             last_event_name = last_event.get("name", "") or ""
 
             if last_status_id == FAN_STATUS_DELIVERED:
                 normalized_status = STATUS_DELIVERED
+            elif last_status_id == FAN_STATUS_DELIVERING:
+                normalized_status = STATUS_OUT_FOR_DELIVERY
             elif last_status_id == FAN_STATUS_OUT_FOR_DELIVERY:
                 normalized_status = STATUS_OUT_FOR_DELIVERY
             elif last_status_id == FAN_STATUS_PICKED_UP:
                 normalized_status = STATUS_PICKED_UP
-            elif last_status_id == FAN_STATUS_IN_TRANSIT:
+            elif last_status_id in FAN_IN_TRANSIT_CODES:
                 normalized_status = STATUS_IN_TRANSIT
             else:
                 # Check if any event is S2 (delivered)
@@ -443,6 +472,11 @@ class ColeteAPI:
                 ):
                     normalized_status = STATUS_READY_FOR_PICKUP
 
+        # Check for returned parcels (returnAwbNumber populated)
+        return_awb = data.get("returnAwbNumber")
+        if return_awb and normalized_status != STATUS_DELIVERED:
+            normalized_status = STATUS_RETURNED
+
         # Extract location from latest event
         last_event = events_raw[-1] if events_raw else {}
         location = last_event.get("location", "")
@@ -452,6 +486,9 @@ class ColeteAPI:
         is_delivered = normalized_status == STATUS_DELIVERED
         delivered_to = confirmation.get("name") if is_delivered else None
         delivered_date = confirmation.get("date") if is_delivered else None
+
+        # Weight is available from FAN API
+        weight = data.get("weight")
 
         # Build normalized events list
         events = []
@@ -476,7 +513,7 @@ class ColeteAPI:
             "delivered": is_delivered,
             "delivered_date": delivered_date,
             "delivered_to": delivered_to,
-            "weight": None,
+            "weight": weight,
             "events": events,
         }
 

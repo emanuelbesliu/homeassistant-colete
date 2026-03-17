@@ -53,14 +53,18 @@ SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT = 18
 # FAN Courier API
 FAN_API_URL = "https://www.fancourier.ro/limit-tracking.php"
 
-# FAN Courier status codes
-# C0 = picked up, H4 = sorting/in transit, C1 = out for delivery,
-# S1 = delivering, S2 = delivered
+# FAN Courier status codes (from real API event id values)
+# C0 = picked up, H0 = in transit to destination depot, H4 = sorting/in transit,
+# C1 = out for delivery, S1 = delivering, S2 = delivered
 FAN_STATUS_PICKED_UP = "C0"
-FAN_STATUS_IN_TRANSIT = "H4"
+FAN_STATUS_IN_TRANSIT = "H0"
+FAN_STATUS_IN_TRANSIT_SORTING = "H4"
 FAN_STATUS_OUT_FOR_DELIVERY = "C1"
 FAN_STATUS_DELIVERING = "S1"
 FAN_STATUS_DELIVERED = "S2"
+
+# All FAN status codes that indicate in-transit state
+FAN_IN_TRANSIT_CODES = {FAN_STATUS_IN_TRANSIT, FAN_STATUS_IN_TRANSIT_SORTING}
 
 # Normalized parcel statuses (courier-agnostic)
 STATUS_UNKNOWN = "unknown"
