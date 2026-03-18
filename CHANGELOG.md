@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.2.0...v1.2.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* remove manual config_entry assignment in OptionsFlow ([e23b20a](https://github.com/emanuelbesliu/homeassistant-colete/commit/e23b20aadcaa206a421f9e446b4ced054dd6e6dd))
+
 ## [1.2.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.1.0...v1.2.0) (2026-03-18)
 
 
