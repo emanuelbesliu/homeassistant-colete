@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Background circle - warm brown/amber for parcels -->
+  <circle cx="128" cy="128" r="120" fill="#D4820A"/>
+
+  <!-- Parcel box - white -->
+  <rect x="68" y="82" width="120" height="100" rx="8" fill="white"/>
+
+  <!-- Box tape/seam lines -->
+  <line x1="128" y1="82" x2="128" y2="182" stroke="#D4820A" stroke-width="4"/>
+  <line x1="68" y1="120" x2="188" y2="120" stroke="#D4820A" stroke-width="3"/>
+
+  <!-- Flap top -->
+  <polygon points="68,82 88,58 168,58 188,82" fill="white"/>
+  <line x1="128" y1="58" x2="128" y2="82" stroke="#D4820A" stroke-width="4"/>
+
+  <!-- Location pin (tracking) - top right area -->
+  <circle cx="176" cy="62" r="20" fill="white"/>
+  <circle cx="176" cy="58" r="10" fill="#D4820A"/>
+  <circle cx="176" cy="58" r="4" fill="white"/>
+  <polygon points="170,68 176,84 182,68" fill="white"/>
+
+  <!-- Small route dots at bottom -->
+  <circle cx="90" cy="200" r="5" fill="white" opacity="0.7"/>
+  <circle cx="110" cy="206" r="4" fill="white" opacity="0.5"/>
+  <circle cx="128" cy="208" r="3" fill="white" opacity="0.4"/>
+  <circle cx="144" cy="206" r="4" fill="white" opacity="0.5"/>
+  <circle cx="164" cy="200" r="5" fill="white" opacity="0.7"/>
+</svg>
