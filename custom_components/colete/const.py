@@ -8,14 +8,17 @@ CONF_COURIER = "courier"
 CONF_AWB = "awb"
 CONF_FRIENDLY_NAME = "friendly_name"
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_RETENTION_DAYS = "retention_days"
 
 # Defaults
 DEFAULT_UPDATE_INTERVAL = 900  # 15 minutes in seconds
 MIN_UPDATE_INTERVAL = 300  # 5 minutes
 MAX_UPDATE_INTERVAL = 3600  # 1 hour
 
-# Auto-archive: delivered parcels are removed after this many days
-AUTO_ARCHIVE_DAYS = 30
+# Retention: delivered parcels are removed after this many days (0 = keep forever)
+DEFAULT_RETENTION_DAYS = 30
+MIN_RETENTION_DAYS = 0
+MAX_RETENTION_DAYS = 365
 
 # Supported couriers
 COURIER_AUTO = "auto"
@@ -69,7 +72,9 @@ FAN_STATUS_DELIVERED = "S2"
 FAN_IN_TRANSIT_CODES = {FAN_STATUS_IN_TRANSIT, FAN_STATUS_IN_TRANSIT_SORTING}
 
 # Cargus tracking (HTML scraping — no public JSON API exists)
-CARGUS_TRACKING_URL = "https://www.cargus.ro/personal/urmareste-coletul/?tracking_number={awb}"
+CARGUS_TRACKING_URL = (
+    "https://www.cargus.ro/personal/urmareste-coletul/?tracking_number={awb}"
+)
 
 # Cargus status string mappings are defined below (after STATUS_* constants)
 

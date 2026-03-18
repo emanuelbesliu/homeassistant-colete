@@ -6,9 +6,13 @@ pytest.importorskip("homeassistant")
 
 from custom_components.colete.api import ColeteAPI  # noqa: E402
 from custom_components.colete.const import (  # noqa: E402
+    CONF_RETENTION_DAYS,
     COURIER_SAMEDAY,
     COURIER_FAN,
     COURIER_CARGUS,
+    DEFAULT_RETENTION_DAYS,
+    MIN_RETENTION_DAYS,
+    MAX_RETENTION_DAYS,
     SAMEDAY_STATE_DELIVERED,
     SAMEDAY_STATE_IN_TRANSIT,
     SAMEDAY_STATE_OUT_FOR_DELIVERY,
@@ -23,6 +27,9 @@ from custom_components.colete.const import (  # noqa: E402
     STATUS_UNKNOWN,
     STATUS_PICKED_UP,
     STATUS_CANCELED,
+)
+from custom_components.colete.coordinator import (  # noqa: E402
+    ColeteDataUpdateCoordinator,
 )
 
 
@@ -517,7 +524,9 @@ def test_fan_invalid_awb_detection():
 def test_matches_locker_keywords():
     """Test the locker keyword matching helper."""
     assert ColeteAPI._matches_locker_keywords("Disponibil in easybox", ["easybox"])
-    assert ColeteAPI._matches_locker_keywords("Coletul a fost depus in FANbox", ["fanbox"])
+    assert ColeteAPI._matches_locker_keywords(
+        "Coletul a fost depus in FANbox", ["fanbox"]
+    )
     assert ColeteAPI._matches_locker_keywords("EASYBOX Mega Image", ["easybox"])
     assert not ColeteAPI._matches_locker_keywords("In tranzit", ["easybox", "fanbox"])
     assert not ColeteAPI._matches_locker_keywords("", ["easybox"])
@@ -751,13 +760,87 @@ def test_parse_cargus_returned():
 
 def test_normalize_cargus_status():
     """Test Cargus status normalization with various Romanian strings."""
-    assert ColeteAPI._normalize_cargus_status("Livrat la destinatar (confirmat)") == STATUS_DELIVERED
+    assert (
+        ColeteAPI._normalize_cargus_status("Livrat la destinatar (confirmat)")
+        == STATUS_DELIVERED
+    )
     assert ColeteAPI._normalize_cargus_status("Livrat") == STATUS_DELIVERED
-    assert ColeteAPI._normalize_cargus_status("In curs de livrare") == STATUS_OUT_FOR_DELIVERY
+    assert (
+        ColeteAPI._normalize_cargus_status("In curs de livrare")
+        == STATUS_OUT_FOR_DELIVERY
+    )
     assert ColeteAPI._normalize_cargus_status("In tranzit") == STATUS_IN_TRANSIT
-    assert ColeteAPI._normalize_cargus_status("Colet preluat de la expeditor") == STATUS_PICKED_UP
+    assert (
+        ColeteAPI._normalize_cargus_status("Colet preluat de la expeditor")
+        == STATUS_PICKED_UP
+    )
     assert ColeteAPI._normalize_cargus_status("Expeditie ridicata") == STATUS_PICKED_UP
-    assert ColeteAPI._normalize_cargus_status("Returnat la expeditor") == STATUS_RETURNED
+    assert (
+        ColeteAPI._normalize_cargus_status("Returnat la expeditor") == STATUS_RETURNED
+    )
     assert ColeteAPI._normalize_cargus_status("Comanda anulata") == STATUS_CANCELED
     assert ColeteAPI._normalize_cargus_status("") == STATUS_UNKNOWN
     assert ColeteAPI._normalize_cargus_status("Status necunoscut xyz") == STATUS_UNKNOWN
+
+
+# ============================================================
+# Retention configuration tests
+# ============================================================
+
+
+def test_retention_days_constants():
+    """Test retention_days constant values."""
+    assert CONF_RETENTION_DAYS == "retention_days"
+    assert DEFAULT_RETENTION_DAYS == 30
+    assert MIN_RETENTION_DAYS == 0
+    assert MAX_RETENTION_DAYS == 365
+
+
+# ============================================================
+# Coordinator date parsing tests
+# ============================================================
+
+
+def test_parse_delivered_date_iso8601():
+    """Test parsing ISO 8601 date from Sameday (timezone-aware)."""
+    dt = ColeteDataUpdateCoordinator._parse_delivered_date("2026-02-25T20:14:05+02:00")
+    assert dt is not None
+    assert dt.year == 2026
+    assert dt.month == 2
+    assert dt.day == 25
+    assert dt.tzinfo is not None
+
+
+def test_parse_delivered_date_fan_format():
+    """Test parsing FAN Courier date format (YYYY-MM-DD HH:MM)."""
+    dt = ColeteDataUpdateCoordinator._parse_delivered_date("2025-08-05 14:00")
+    assert dt is not None
+    assert dt.year == 2025
+    assert dt.month == 8
+    assert dt.day == 5
+    assert dt.tzinfo is not None  # Should be set to UTC as fallback
+
+
+def test_parse_delivered_date_cargus_format():
+    """Test parsing Cargus date format (DD Month YYYY, HH:MM)."""
+    dt = ColeteDataUpdateCoordinator._parse_delivered_date("11 December 2025, 12:12")
+    assert dt is not None
+    assert dt.year == 2025
+    assert dt.month == 12
+    assert dt.day == 11
+    assert dt.tzinfo is not None
+
+
+def test_parse_delivered_date_none():
+    """Test that None input returns None."""
+    assert ColeteDataUpdateCoordinator._parse_delivered_date(None) is None
+
+
+def test_parse_delivered_date_empty():
+    """Test that empty string returns None."""
+    assert ColeteDataUpdateCoordinator._parse_delivered_date("") is None
+
+
+def test_parse_delivered_date_invalid():
+    """Test that invalid date string returns None (no exception)."""
+    assert ColeteDataUpdateCoordinator._parse_delivered_date("not a date") is None

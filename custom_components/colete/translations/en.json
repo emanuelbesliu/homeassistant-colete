@@ -8,13 +8,15 @@
           "awb": "AWB Number",
           "courier": "Courier",
           "friendly_name": "Friendly name (optional)",
-          "update_interval": "Update interval (seconds)"
+          "update_interval": "Update interval (seconds)",
+          "retention_days": "Retention after delivery (days)"
         },
         "data_description": {
           "awb": "The tracking number (AWB) for the parcel",
           "courier": "Select the courier or use Auto-detect to try all supported couriers",
           "friendly_name": "A custom name for this parcel (e.g. 'New Laptop')",
-          "update_interval": "How often to check for updates (300-3600 seconds, default 900)"
+          "update_interval": "How often to check for updates (300-3600 seconds, default 900)",
+          "retention_days": "Days to keep the parcel after delivery (0 = keep forever, default 30)"
         }
       }
     },
@@ -33,11 +35,13 @@
         "title": "Colete - Parcel Options",
         "data": {
           "friendly_name": "Friendly name",
-          "update_interval": "Update interval (seconds)"
+          "update_interval": "Update interval (seconds)",
+          "retention_days": "Retention after delivery (days)"
         },
         "data_description": {
           "friendly_name": "A custom name for this parcel",
-          "update_interval": "How often to check for updates (300-3600 seconds)"
+          "update_interval": "How often to check for updates (300-3600 seconds)",
+          "retention_days": "Days to keep the parcel after delivery (0 = keep forever)"
         }
       }
     }

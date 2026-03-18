@@ -136,7 +136,9 @@ class ColeteAPI:
                 continue
 
         if last_error:
-            raise ColeteNotFoundError(f"AWB {awb} not found with any courier (last error: {last_error})")
+            raise ColeteNotFoundError(
+                f"AWB {awb} not found with any courier (last error: {last_error})"
+            )
         raise ColeteNotFoundError(f"AWB {awb} not found with any supported courier")
 
     def validate_awb(self, courier: str, awb: str) -> dict[str, Any]:
@@ -259,7 +261,10 @@ class ColeteAPI:
         # 1. Use the isLockerService flag from the API response
         # 2. Also check status labels for locker keywords
         # If parcel is at a locker and not yet delivered, set ready_for_pickup
-        if normalized_status != STATUS_DELIVERED and normalized_status != STATUS_RETURNED:
+        if (
+            normalized_status != STATUS_DELIVERED
+            and normalized_status != STATUS_RETURNED
+        ):
             if is_locker_service and latest_state_id in (
                 SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT,
                 SAMEDAY_STATE_OUT_FOR_DELIVERY,
@@ -267,8 +272,14 @@ class ColeteAPI:
                 normalized_status = STATUS_READY_FOR_PICKUP
             else:
                 # Fallback: check status text for locker keywords
-                current_label = latest_event.get("status", "") or latest_event.get("statusState", "") or ""
-                if self._matches_locker_keywords(current_label, SAMEDAY_LOCKER_KEYWORDS):
+                current_label = (
+                    latest_event.get("status", "")
+                    or latest_event.get("statusState", "")
+                    or ""
+                )
+                if self._matches_locker_keywords(
+                    current_label, SAMEDAY_LOCKER_KEYWORDS
+                ):
                     normalized_status = STATUS_READY_FOR_PICKUP
 
         # Extract location from latest event
@@ -336,9 +347,13 @@ class ColeteAPI:
         }
 
         try:
-            response = self._session.post(FAN_API_URL, data=form_data, timeout=REQUEST_TIMEOUT)
+            response = self._session.post(
+                FAN_API_URL, data=form_data, timeout=REQUEST_TIMEOUT
+            )
         except requests.exceptions.Timeout as err:
-            raise ColeteApiError(f"Timeout connecting to FAN Courier API: {err}") from err
+            raise ColeteApiError(
+                f"Timeout connecting to FAN Courier API: {err}"
+            ) from err
         except requests.exceptions.ConnectionError as err:
             raise ColeteApiError(f"Connection error to FAN Courier API: {err}") from err
         except requests.exceptions.RequestException as err:
@@ -370,7 +385,9 @@ class ColeteAPI:
 
         # Detect invalid AWB: response has "message" but no "events" or "awbNumber"
         if "message" in data and "events" not in data:
-            raise ColeteNotFoundError(f"FAN Courier AWB {awb} not found: {data.get('message', '')}")
+            raise ColeteNotFoundError(
+                f"FAN Courier AWB {awb} not found: {data.get('message', '')}"
+            )
 
         return self._parse_fan(data, awb)
 
@@ -492,16 +509,22 @@ class ColeteAPI:
         try:
             response = self._session.get(url, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout as err:
-            raise ColeteApiError(f"Timeout connecting to Cargus tracking page: {err}") from err
+            raise ColeteApiError(
+                f"Timeout connecting to Cargus tracking page: {err}"
+            ) from err
         except requests.exceptions.ConnectionError as err:
-            raise ColeteApiError(f"Connection error to Cargus tracking page: {err}") from err
+            raise ColeteApiError(
+                f"Connection error to Cargus tracking page: {err}"
+            ) from err
         except requests.exceptions.RequestException as err:
             raise ColeteApiError(f"Error fetching Cargus tracking page: {err}") from err
 
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
-            raise ColeteApiError(f"HTTP error from Cargus tracking page: {err}") from err
+            raise ColeteApiError(
+                f"HTTP error from Cargus tracking page: {err}"
+            ) from err
 
         return self._parse_cargus(response.text, awb)
 
@@ -538,7 +561,9 @@ class ColeteAPI:
         # Check for tracking response container
         container = soup.select_one(".tracking-response-container")
         if not container:
-            raise ColeteNotFoundError(f"Cargus AWB {awb}: no tracking data found in response")
+            raise ColeteNotFoundError(
+                f"Cargus AWB {awb}: no tracking data found in response"
+            )
 
         # Extract status text from .trk-status-container span
         status_text = ""

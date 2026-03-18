@@ -53,9 +53,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class ColeteSensor(
-    CoordinatorEntity[ColeteDataUpdateCoordinator], SensorEntity
-):
+class ColeteSensor(CoordinatorEntity[ColeteDataUpdateCoordinator], SensorEntity):
     """Representation of a parcel tracking sensor."""
 
     _attr_has_entity_name = True

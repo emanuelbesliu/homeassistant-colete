@@ -8,13 +8,15 @@
           "awb": "Număr AWB",
           "courier": "Curier",
           "friendly_name": "Nume personalizat (opțional)",
-          "update_interval": "Interval de actualizare (secunde)"
+          "update_interval": "Interval de actualizare (secunde)",
+          "retention_days": "Retenție după livrare (zile)"
         },
         "data_description": {
           "awb": "Numărul de urmărire (AWB) al coletului",
           "courier": "Selectează curierul sau folosește Auto-detectare pentru a încerca toți curierii suportați",
           "friendly_name": "Un nume personalizat pentru acest colet (ex. 'Laptop Nou')",
-          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde, implicit 900)"
+          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde, implicit 900)",
+          "retention_days": "Zile de păstrare a coletului după livrare (0 = păstrare permanentă, implicit 30)"
         }
       }
     },
@@ -33,11 +35,13 @@
         "title": "Colete - Opțiuni Colet",
         "data": {
           "friendly_name": "Nume personalizat",
-          "update_interval": "Interval de actualizare (secunde)"
+          "update_interval": "Interval de actualizare (secunde)",
+          "retention_days": "Retenție după livrare (zile)"
         },
         "data_description": {
           "friendly_name": "Un nume personalizat pentru acest colet",
-          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde)"
+          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde)",
+          "retention_days": "Zile de păstrare a coletului după livrare (0 = păstrare permanentă)"
         }
       }
     }

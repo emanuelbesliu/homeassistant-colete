@@ -15,11 +15,15 @@ from .const import (
     CONF_AWB,
     CONF_FRIENDLY_NAME,
     CONF_UPDATE_INTERVAL,
+    CONF_RETENTION_DAYS,
     COURIERS,
     COURIER_AUTO,
     DEFAULT_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL,
     MAX_UPDATE_INTERVAL,
+    DEFAULT_RETENTION_DAYS,
+    MIN_RETENTION_DAYS,
+    MAX_RETENTION_DAYS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,6 +83,9 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_UPDATE_INTERVAL: user_input.get(
                             CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
                         ),
+                        CONF_RETENTION_DAYS: user_input.get(
+                            CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS
+                        ),
                     },
                 )
 
@@ -87,9 +94,9 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_AWB): str,
-                vol.Optional(
-                    CONF_COURIER, default=COURIER_AUTO
-                ): vol.In(courier_options),
+                vol.Optional(CONF_COURIER, default=COURIER_AUTO): vol.In(
+                    courier_options
+                ),
                 vol.Optional(CONF_FRIENDLY_NAME, default=""): str,
                 vol.Optional(
                     CONF_UPDATE_INTERVAL,
@@ -97,6 +104,13 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL),
+                ),
+                vol.Optional(
+                    CONF_RETENTION_DAYS,
+                    default=DEFAULT_RETENTION_DAYS,
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=MIN_RETENTION_DAYS, max=MAX_RETENTION_DAYS),
                 ),
             }
         )
@@ -137,6 +151,9 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_UPDATE_INTERVAL: user_input.get(
                     CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
                 ),
+                CONF_RETENTION_DAYS: user_input.get(
+                    CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS
+                ),
             },
         )
 
@@ -158,7 +175,7 @@ class ColeteOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options - update friendly name and interval."""
+        """Manage the options - update friendly name, interval, and retention."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -168,9 +185,11 @@ class ColeteOptionsFlowHandler(config_entries.OptionsFlow):
         )
         current_interval = self.config_entry.options.get(
             CONF_UPDATE_INTERVAL,
-            self.config_entry.data.get(
-                CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
-            ),
+            self.config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+        )
+        current_retention = self.config_entry.options.get(
+            CONF_RETENTION_DAYS,
+            self.config_entry.data.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS),
         )
 
         options_schema = vol.Schema(
@@ -185,6 +204,13 @@ class ColeteOptionsFlowHandler(config_entries.OptionsFlow):
                 ): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL),
+                ),
+                vol.Optional(
+                    CONF_RETENTION_DAYS,
+                    default=current_retention,
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=MIN_RETENTION_DAYS, max=MAX_RETENTION_DAYS),
                 ),
             }
         )

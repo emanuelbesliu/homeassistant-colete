@@ -30,9 +30,7 @@ SERVICE_TRACK_PARCEL = "track_parcel"
 SERVICE_TRACK_PARCEL_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_AWB): cv.string,
-        vol.Optional(CONF_COURIER, default=COURIER_AUTO): vol.In(
-            list(COURIERS.keys())
-        ),
+        vol.Optional(CONF_COURIER, default=COURIER_AUTO): vol.In(list(COURIERS.keys())),
         vol.Optional(CONF_FRIENDLY_NAME, default=""): cv.string,
     }
 )
@@ -57,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register the track_parcel service (only once, on first entry)
     if not hass.services.has_service(DOMAIN, SERVICE_TRACK_PARCEL):
+
         async def handle_track_parcel(call: ServiceCall) -> None:
             """Handle the colete.track_parcel service call."""
             awb = call.data[CONF_AWB].strip()
@@ -66,9 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # Check if already tracked
             for existing_entry in hass.config_entries.async_entries(DOMAIN):
                 if existing_entry.data.get(CONF_AWB) == awb:
-                    _LOGGER.warning(
-                        "AWB %s is already being tracked", awb
-                    )
+                    _LOGGER.warning("AWB %s is already being tracked", awb)
                     return
 
             # Validate AWB before creating config entry
@@ -79,9 +76,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 detected_courier = result.get("courier", courier)
             except (ColeteNotFoundError, ColeteApiError) as err:
-                _LOGGER.error(
-                    "Failed to track AWB %s: %s", awb, err
-                )
+                _LOGGER.error("Failed to track AWB %s: %s", awb, err)
                 return
             finally:
                 api.close()
@@ -127,8 +122,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-async def _async_update_listener(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> None:
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update - reload the integration."""
     await hass.config_entries.async_reload(entry.entry_id)
