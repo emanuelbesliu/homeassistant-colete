@@ -10,6 +10,7 @@ from custom_components.colete.const import (  # noqa: E402
     COURIER_SAMEDAY,
     COURIER_FAN,
     COURIER_CARGUS,
+    COURIER_GLS,
     DEFAULT_RETENTION_DAYS,
     MIN_RETENTION_DAYS,
     MAX_RETENTION_DAYS,
@@ -844,3 +845,436 @@ def test_parse_delivered_date_empty():
 def test_parse_delivered_date_invalid():
     """Test that invalid date string returns None (no exception)."""
     assert ColeteDataUpdateCoordinator._parse_delivered_date("not a date") is None
+
+
+# ============================================================
+# GLS Romania fixtures (based on real API response from AWB 6234776771)
+# ============================================================
+
+# Delivered parcel — real response structure from GLS rstt029 endpoint
+MOCK_GLS_DELIVERED = {
+    "tuStatus": [
+        {
+            "postalCode": "",
+            "emailNotificationCard": False,
+            "date": "2026-02-16",
+            "tuNo": "6234776771",
+            "progressBar": {
+                "level": 100,
+                "statusBar": [
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Preadvice",
+                        "status": "PREADVICE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "\u00cen tranzit",
+                        "status": "INTRANSIT",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Centrul de expedieri",
+                        "status": "INWAREHOUSE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "\u00cen livrare",
+                        "status": "INDELIVERY",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "Livrat",
+                        "status": "DELIVERED",
+                        "statusText": "Coletul a fost livrat. Pentru detalii, vizualiza&#539;i istoricul coletului mai jos.",
+                    },
+                ],
+                "statusInfo": "DELIVERED",
+                "evtNos": ["3.0"],
+                "statusText": "Livrat",
+                "retourFlag": False,
+                "colourIndex": 4,
+            },
+            "natSysOwnerCode": "RO01",
+            "owners": [],
+        }
+    ]
+}
+
+# In-transit parcel
+MOCK_GLS_IN_TRANSIT = {
+    "tuStatus": [
+        {
+            "postalCode": "",
+            "date": "2026-03-18",
+            "tuNo": "6234999999",
+            "progressBar": {
+                "level": 40,
+                "statusBar": [
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Preadvice",
+                        "status": "PREADVICE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "\u00cen tranzit",
+                        "status": "INTRANSIT",
+                        "statusText": "Coletul este \u00een tranzit.",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "Centrul de expedieri",
+                        "status": "INWAREHOUSE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "\u00cen livrare",
+                        "status": "INDELIVERY",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "Livrat",
+                        "status": "DELIVERED",
+                        "statusText": "",
+                    },
+                ],
+                "statusInfo": "INTRANSIT",
+                "statusText": "\u00cen tranzit",
+                "retourFlag": False,
+                "colourIndex": 1,
+            },
+            "owners": [],
+        }
+    ]
+}
+
+# Out for delivery parcel
+MOCK_GLS_OUT_FOR_DELIVERY = {
+    "tuStatus": [
+        {
+            "date": "2026-03-18",
+            "tuNo": "6234888888",
+            "progressBar": {
+                "level": 80,
+                "statusBar": [
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Preadvice",
+                        "status": "PREADVICE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "\u00cen tranzit",
+                        "status": "INTRANSIT",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Centrul de expedieri",
+                        "status": "INWAREHOUSE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "\u00cen livrare",
+                        "status": "INDELIVERY",
+                        "statusText": "Coletul este \u00een curs de livrare.",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "Livrat",
+                        "status": "DELIVERED",
+                        "statusText": "",
+                    },
+                ],
+                "statusInfo": "INDELIVERY",
+                "statusText": "\u00cen livrare",
+                "retourFlag": False,
+                "colourIndex": 3,
+            },
+            "owners": [],
+        }
+    ]
+}
+
+# Preadvice (just registered) parcel
+MOCK_GLS_PREADVICE = {
+    "tuStatus": [
+        {
+            "date": "2026-03-18",
+            "tuNo": "6234777777",
+            "progressBar": {
+                "level": 0,
+                "statusBar": [
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "Preadvice",
+                        "status": "PREADVICE",
+                        "statusText": "Coletul a fost \u00eenregistrat.",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "\u00cen tranzit",
+                        "status": "INTRANSIT",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "Centrul de expedieri",
+                        "status": "INWAREHOUSE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "\u00cen livrare",
+                        "status": "INDELIVERY",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "PENDING",
+                        "imageText": "Livrat",
+                        "status": "DELIVERED",
+                        "statusText": "",
+                    },
+                ],
+                "statusInfo": "PREADVICE",
+                "statusText": "Preadvice",
+                "retourFlag": False,
+                "colourIndex": 0,
+            },
+            "owners": [],
+        }
+    ]
+}
+
+# Delivered to parcel shop/locker
+MOCK_GLS_PARCEL_SHOP = {
+    "tuStatus": [
+        {
+            "date": "2026-03-18",
+            "tuNo": "6234666666",
+            "progressBar": {
+                "level": 100,
+                "statusBar": [
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Preadvice",
+                        "status": "PREADVICE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "\u00cen tranzit",
+                        "status": "INTRANSIT",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Centrul de expedieri",
+                        "status": "INWAREHOUSE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "\u00cen livrare",
+                        "status": "INDELIVERY",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "Livrat la parcel shop",
+                        "status": "DELIVEREDPS",
+                        "statusText": "Coletul a fost livrat la parcel shop.",
+                    },
+                ],
+                "statusInfo": "DELIVEREDPS",
+                "statusText": "Livrat la parcel shop",
+                "retourFlag": False,
+                "colourIndex": 4,
+            },
+            "owners": [],
+        }
+    ]
+}
+
+# Returned parcel (retourFlag=True)
+MOCK_GLS_RETURNED = {
+    "tuStatus": [
+        {
+            "date": "2026-03-17",
+            "tuNo": "6234555555",
+            "progressBar": {
+                "level": 60,
+                "statusBar": [
+                    {
+                        "imageStatus": "COMPLETE",
+                        "imageText": "Preadvice",
+                        "status": "PREADVICE",
+                        "statusText": "",
+                    },
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "Retur",
+                        "status": "INTRANSIT",
+                        "statusText": "Coletul este \u00een retur.",
+                    },
+                ],
+                "statusInfo": "INTRANSIT",
+                "statusText": "Retur",
+                "retourFlag": True,
+                "colourIndex": 1,
+            },
+            "owners": [],
+        }
+    ]
+}
+
+# Empty response (no tuStatus)
+MOCK_GLS_EMPTY = {"tuStatus": []}
+
+# HTML entities in statusText
+MOCK_GLS_HTML_ENTITIES = {
+    "tuStatus": [
+        {
+            "date": "2026-03-18",
+            "tuNo": "6234444444",
+            "progressBar": {
+                "level": 40,
+                "statusBar": [
+                    {
+                        "imageStatus": "CURRENT",
+                        "imageText": "\u00cen tranzit",
+                        "status": "INTRANSIT",
+                        "statusText": "Vizualiza&#539;i detaliile coletului &#238;n aplica&#539;ie.",
+                    },
+                ],
+                "statusInfo": "INTRANSIT",
+                "statusText": "&#206;n tranzit",
+                "retourFlag": False,
+            },
+            "owners": [],
+        }
+    ]
+}
+
+
+# ============================================================
+# GLS Romania tests
+# ============================================================
+
+
+def test_parse_gls_delivered():
+    """Test parsing a GLS delivered response (real AWB data structure)."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_DELIVERED, "6234776771")
+
+    assert result["courier"] == COURIER_GLS
+    assert result["awb"] == "6234776771"
+    assert result["status"] == STATUS_DELIVERED
+    assert result["status_label"] == "Delivered"
+    assert result["delivered"] is True
+    assert result["delivered_date"] == "2026-02-16"
+    assert result["last_update"] == "2026-02-16"
+    assert result["progress_pct"] == 100
+    assert result["location"] == ""  # Not available from GLS
+    assert result["weight"] is None  # Not available from GLS
+    assert result["events"] == []  # GLS only shows current status
+    assert result["delivered_to"] is None
+    # Status detail should be from the CURRENT step's statusText (HTML-unescaped)
+    assert "vizualiza" in result["status_detail"].lower()
+    assert "&#" not in result["status_detail"]  # HTML entities decoded
+    api.close()
+
+
+def test_parse_gls_in_transit():
+    """Test parsing a GLS in-transit response."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_IN_TRANSIT, "6234999999")
+
+    assert result["courier"] == COURIER_GLS
+    assert result["status"] == STATUS_IN_TRANSIT
+    assert result["status_label"] == "In Transit"
+    assert result["delivered"] is False
+    assert result["delivered_date"] is None
+    assert result["progress_pct"] == 40
+    assert result["last_update"] == "2026-03-18"
+    api.close()
+
+
+def test_parse_gls_out_for_delivery():
+    """Test parsing a GLS out-for-delivery response."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_OUT_FOR_DELIVERY, "6234888888")
+
+    assert result["status"] == STATUS_OUT_FOR_DELIVERY
+    assert result["status_label"] == "Out for Delivery"
+    assert result["delivered"] is False
+    assert result["progress_pct"] == 80
+    api.close()
+
+
+def test_parse_gls_preadvice():
+    """Test parsing a GLS preadvice (just registered) response."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_PREADVICE, "6234777777")
+
+    assert result["status"] == STATUS_PICKED_UP
+    assert result["status_label"] == "Picked Up"
+    assert result["delivered"] is False
+    assert result["progress_pct"] == 0
+    api.close()
+
+
+def test_parse_gls_parcel_shop():
+    """Test parsing a GLS parcel shop/locker delivery (DELIVEREDPS)."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_PARCEL_SHOP, "6234666666")
+
+    assert result["status"] == STATUS_READY_FOR_PICKUP
+    assert result["status_label"] == "Ready for Pickup"
+    assert result["delivered"] is False
+    assert result["progress_pct"] == 100
+    api.close()
+
+
+def test_parse_gls_returned():
+    """Test GLS return detection via retourFlag."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_RETURNED, "6234555555")
+
+    assert result["status"] == STATUS_RETURNED
+    assert result["status_label"] == "Returned"
+    assert result["delivered"] is False
+    api.close()
+
+
+def test_parse_gls_empty():
+    """Test GLS empty response raises ColeteNotFoundError."""
+    from custom_components.colete.api import ColeteNotFoundError
+
+    api = ColeteAPI()
+    with pytest.raises(ColeteNotFoundError, match="empty response"):
+        api._parse_gls(MOCK_GLS_EMPTY, "0000000000")
+    api.close()
+
+
+def test_parse_gls_html_entities():
+    """Test that HTML entities in GLS status text are properly decoded."""
+    api = ColeteAPI()
+    result = api._parse_gls(MOCK_GLS_HTML_ENTITIES, "6234444444")
+
+    assert result["status"] == STATUS_IN_TRANSIT
+    # statusText had &#206;n → În (decoded)
+    assert "&#" not in result["status_detail"]
+    # Main statusText should also be decoded
+    assert "&#" not in result["status_label"]
+    api.close()

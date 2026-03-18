@@ -25,16 +25,18 @@ COURIER_AUTO = "auto"
 COURIER_SAMEDAY = "sameday"
 COURIER_FAN = "fan_courier"
 COURIER_CARGUS = "cargus"
+COURIER_GLS = "gls"
 
 COURIERS = {
     COURIER_AUTO: "Auto-detect",
     COURIER_SAMEDAY: "Sameday",
     COURIER_FAN: "FAN Courier",
     COURIER_CARGUS: "Cargus",
+    COURIER_GLS: "GLS",
 }
 
 # Courier detection order (tried sequentially when auto-detect is used)
-COURIER_DETECT_ORDER = [COURIER_SAMEDAY, COURIER_FAN, COURIER_CARGUS]
+COURIER_DETECT_ORDER = [COURIER_SAMEDAY, COURIER_FAN, COURIER_CARGUS, COURIER_GLS]
 
 # Sameday API
 SAMEDAY_API_URL = "https://api.sameday.ro/api/public/awb/{awb}/awb-history"
@@ -78,6 +80,12 @@ CARGUS_TRACKING_URL = (
 
 # Cargus status string mappings are defined below (after STATUS_* constants)
 
+# GLS Romania API (public endpoint, no authentication required)
+GLS_API_URL = (
+    "https://gls-group.eu/app/service/open/rest/RO/ro/rstt029"
+    "?match={awb}&type=&caller=witt002&millis={millis}"
+)
+
 # Normalized parcel statuses (courier-agnostic)
 STATUS_UNKNOWN = "unknown"
 STATUS_PICKED_UP = "picked_up"
@@ -120,6 +128,19 @@ CARGUS_STATUS_MAP = [
     ("retur", STATUS_RETURNED),
     ("anulat", STATUS_CANCELED),
 ]
+
+# GLS progressBar.statusInfo → normalized status mapping
+# These values come from the GLS tracking widget JavaScript source.
+GLS_STATUS_MAP = {
+    "PREADVICE": STATUS_PICKED_UP,
+    "INTRANSIT": STATUS_IN_TRANSIT,
+    "INWAREHOUSE": STATUS_IN_TRANSIT,
+    "INDELIVERY": STATUS_OUT_FOR_DELIVERY,
+    "DELIVERED": STATUS_DELIVERED,
+    "DELIVEREDPS": STATUS_READY_FOR_PICKUP,
+    "NOTDELIVERED": STATUS_IN_TRANSIT,
+    "CANCELLED": STATUS_CANCELED,
+}
 
 # Locker/Easybox detection keywords (case-insensitive matching on status text)
 # Sameday uses "easybox" in status labels when parcel is deposited in a locker

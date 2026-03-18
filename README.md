@@ -9,12 +9,12 @@ Integrare Home Assistant pentru urmarirea coletelor din Romania. Suporta curieri
 
 ## Curieri Suportati
 
-| Curier | API | Autentificare |
-|--------|-----|---------------|
-| **Sameday** | API publica JSON | Nu necesita |
-| **FAN Courier** | API publica JSON | Nu necesita |
-
-Se pot adauga curieri noi in versiuni viitoare (Cargus, DPD, Posta Romana etc.).
+| Curier | API | Autentificare | Date Disponibile |
+|--------|-----|---------------|------------------|
+| **Sameday** | API publica JSON | Nu necesita | Status, locatie, istoric evenimente, greutate |
+| **FAN Courier** | API publica JSON | Nu necesita | Status, locatie, istoric evenimente |
+| **Cargus** | HTML scraping | Nu necesita | Status, progres %, fara istoric/locatie |
+| **GLS Romania** | API publica JSON | Nu necesita | Status, progres %, fara istoric/locatie |
 
 ## Functionalitati
 
@@ -24,16 +24,22 @@ Se pot adauga curieri noi in versiuni viitoare (Cargus, DPD, Posta Romana etc.).
 - **Ultima Actualizare** - Data/ora ultimei actualizari de la curier
 - **Livrare** - Starea livrarii (Pending, Ready for Pickup, Delivered)
 
-### Detectare Lockere/Easybox
-- Detecteaza automat cand coletul a fost depozitat intr-un **Easybox** (Sameday) sau **FANbox** (FAN Courier)
-- Status distinct: **Ready for Pickup** - coletul este la locker, nu a fost livrat definitiv
+### Detectare Lockere/Easybox/Parcel Shop
+- Detecteaza automat cand coletul a fost depozitat intr-un **Easybox** (Sameday), **FANbox** (FAN Courier) sau **GLS Parcel Shop**
+- Status distinct: **Ready for Pickup** - coletul este la locker/parcel shop, nu a fost livrat definitiv
 - Continua monitorizarea pana la ridicarea coletului
 
 ### Detectare Automata Curier
 - Selecteaza "Auto-detect" si integrarea incearca fiecare curier in ordine pana gaseste date pentru AWB-ul respectiv
 
 ### Arhivare Automata
-- Coletele livrate/returnate/anulate sunt arhivate automat dupa **30 de zile**
+- Coletele livrate/returnate/anulate sunt arhivate automat dupa un numar configurabil de zile (implicit **30 de zile**, 0 = pastrare permanenta)
+- Numarul de zile se configureaza per colet la adaugare sau din Options flow
+- Numaratoarea incepe de la data reala de livrare (din datele curierului)
+
+### Progres Livrare
+- **Cargus** si **GLS** expun procentul de progres al livrarii (`progress_pct`) ca atribut al senzorului Status
+- Util pentru bare de progres in dashboard
 
 ### Serviciu pentru Automatizari
 - Serviciul `colete.track_parcel` permite adaugarea programatica de colete (ex: din automatizari care parseaza email-uri de confirmare comanda)
@@ -80,7 +86,7 @@ Fiecare colet urmarit este o intrare separata. Poti adauga cate colete doresti.
 ### Pas 2: Configureaza Optiuni (Optional)
 
 1. Mergi la **Settings -> Devices & Services -> Colete -> Configure** (pe intrarea dorita)
-2. Modifica numele prietenos sau intervalul de actualizare
+2. Modifica numele prietenos, intervalul de actualizare sau zilele de retentie
 
 ### Pas 3: Verifica Senzorii Creati
 
@@ -101,7 +107,7 @@ Dupa configurare, pentru fiecare colet vei avea 4 senzori:
 | Picked Up | Coletul a fost preluat de curier |
 | In Transit | In tranzit |
 | Out for Delivery | In curs de livrare |
-| Ready for Pickup | Disponibil la locker (Easybox/FANbox) |
+| Ready for Pickup | Disponibil la locker (Easybox/FANbox/GLS Parcel Shop) |
 | Delivered | Livrat |
 | Returned | Returnat expeditorului |
 | Canceled | Anulat |
@@ -150,7 +156,7 @@ Adauga un colet nou programatic, util pentru automatizari:
 action: colete.track_parcel
 data:
   awb: "987654321"
-  courier: "auto"  # sau "sameday", "fan_courier"
+  courier: "auto"  # sau "sameday", "fan_courier", "cargus", "gls"
   friendly_name: "Laptop nou"
 ```
 
@@ -226,13 +232,17 @@ type: entities
 title: Colete in Curs
 entities:
   - entity: sensor.colete_sameday_123456789_status
-    name: Laptop
+    name: Laptop (Sameday)
   - entity: sensor.colete_sameday_123456789_location
     name: Locatie Laptop
   - entity: sensor.colete_fan_courier_987654321_status
-    name: Telefon
+    name: Telefon (FAN)
   - entity: sensor.colete_fan_courier_987654321_delivery
     name: Livrare Telefon
+  - entity: sensor.colete_cargus_111222333_status
+    name: Haine (Cargus)
+  - entity: sensor.colete_gls_6234776771_status
+    name: Casti (GLS)
 ```
 
 ## Despre Date
@@ -241,18 +251,22 @@ entities:
 
 - **Sameday**: `https://api.sameday.ro/api/public/awb/{AWB}/awb-history` - API publica JSON
 - **FAN Courier**: `https://www.fancourier.ro/limit-tracking.php` - API publica JSON
+- **Cargus**: `https://www.cargus.ro/personal/urmareste-coletul/?tracking_number={AWB}` - HTML scraping (nu exista API publica JSON)
+- **GLS Romania**: `https://gls-group.eu/app/service/open/rest/RO/ro/rstt029` - API publica JSON
 
 ### Frecventa Actualizare
 
 - Implicit: **15 minute** (configurabil: 5 minute - 1 ora)
-- Coletele in statusuri terminale (delivered, returned, canceled) continua sa fie monitorizate pentru 30 de zile
+- Coletele in statusuri terminale (delivered, returned, canceled) continua sa fie monitorizate conform `retention_days` configurat (implicit 30 zile)
 - Coletele la locker (ready_for_pickup) continua sa fie monitorizate activ
 
 ### Limitari
 
-- Doar Sameday si FAN Courier suportate in v1.0.0
-- FAN Courier poate returna eroare 429 (rate limit) daca sunt prea multe cereri
+- **Cargus**: Nu are API publica JSON; datele sunt extrase prin HTML scraping, ceea ce poate fi fragil la schimbari de design. Nu expune istoric evenimente sau locatie.
+- **GLS Romania**: API-ul nu returneaza istoric evenimente, locatie sau greutate. Doar status curent si progres.
+- **FAN Courier** poate returna eroare 429 (rate limit) daca sunt prea multe cereri
 - Coletele foarte vechi pot fi sterse din sistemele curierilor si nu vor mai returna date
+- Curieri nesuportati: DPD Romania (403 la boti), Posta Romana (CAPTCHA Cloudflare)
 
 ## Troubleshooting
 
@@ -291,6 +305,9 @@ custom_components/colete/
   translations/
     en.json             # Traduceri engleza
     ro.json             # Traduceri romana
+  brand/
+    icon.png            # Iconita integrare (256x256)
+    icon@2x.png         # Iconita integrare HiDPI (512x512)
 ```
 
 ## Contributii
@@ -324,5 +341,5 @@ If you find this project useful, consider buying me a coffee!
 
 ---
 
-*Aceasta integrare nu este afiliata oficial cu Sameday sau FAN Courier.*
+*Aceasta integrare nu este afiliata oficial cu Sameday, FAN Courier, Cargus sau GLS.*
 *Datele sunt furnizate prin API-uri publice ale curierilor.*

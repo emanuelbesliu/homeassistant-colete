@@ -1,7 +1,9 @@
 """API clients for Romanian parcel tracking couriers."""
 
+import html
 import logging
 import re
+import time
 from typing import Any
 
 import requests
@@ -12,11 +14,14 @@ from .const import (
     COURIER_SAMEDAY,
     COURIER_FAN,
     COURIER_CARGUS,
+    COURIER_GLS,
     COURIER_DETECT_ORDER,
     SAMEDAY_API_URL,
     FAN_API_URL,
     CARGUS_TRACKING_URL,
     CARGUS_STATUS_MAP,
+    GLS_API_URL,
+    GLS_STATUS_MAP,
     SAMEDAY_STATE_DELIVERED,
     SAMEDAY_STATE_OUT_FOR_DELIVERY,
     SAMEDAY_STATE_PICKED_UP,
@@ -102,6 +107,8 @@ class ColeteAPI:
             return self._track_fan(awb)
         elif courier == COURIER_CARGUS:
             return self._track_cargus(awb)
+        elif courier == COURIER_GLS:
+            return self._track_gls(awb)
         else:
             raise ColeteApiError(f"Unsupported courier: {courier}")
 
@@ -629,6 +636,130 @@ class ColeteAPI:
             if pattern in text_lower:
                 return status
         return STATUS_UNKNOWN
+
+    def _track_gls(self, awb: str) -> dict[str, Any]:
+        """Track a GLS Romania parcel.
+
+        API: GET https://gls-group.eu/app/service/open/rest/RO/ro/rstt029
+             ?match=<AWB>&type=&caller=witt002&millis=<timestamp>
+        No authentication required. Returns JSON with tuStatus array.
+        """
+        url = GLS_API_URL.format(awb=awb, millis=int(time.time() * 1000))
+
+        try:
+            response = self._session.get(url, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.Timeout as err:
+            raise ColeteApiError(
+                f"Timeout connecting to GLS API: {err}"
+            ) from err
+        except requests.exceptions.ConnectionError as err:
+            raise ColeteApiError(
+                f"Connection error to GLS API: {err}"
+            ) from err
+        except requests.exceptions.RequestException as err:
+            raise ColeteApiError(f"Error fetching GLS data: {err}") from err
+
+        if response.status_code == 404:
+            raise ColeteNotFoundError(f"GLS AWB {awb} not found")
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise ColeteApiError(f"HTTP error from GLS API: {err}") from err
+
+        try:
+            data = response.json()
+        except ValueError as err:
+            raise ColeteApiError(f"Invalid JSON from GLS API: {err}") from err
+
+        return self._parse_gls(data, awb)
+
+    def _parse_gls(self, data: dict[str, Any], awb: str) -> dict[str, Any]:
+        """Parse GLS API response into normalized format.
+
+        Real API structure:
+        {
+            "tuStatus": [
+                {
+                    "tuNo": "6234776771",
+                    "date": "2026-02-16",
+                    "progressBar": {
+                        "level": 100,
+                        "statusInfo": "DELIVERED",
+                        "statusText": "Livrat",
+                        "retourFlag": false,
+                        "statusBar": [
+                            { "imageStatus": "COMPLETE"|"CURRENT"|"PENDING",
+                              "imageText": "...", "status": "...",
+                              "statusText": "..." },
+                            ...
+                        ]
+                    },
+                    ...
+                }
+            ]
+        }
+
+        Limitations (similar to Cargus):
+        - No event history (only current progress bar status)
+        - No location data
+        - No weight or delivery-to info
+        - Has: current status, progress level %, date, status text, retour flag
+        """
+        tu_status = data.get("tuStatus", [])
+        if not tu_status:
+            raise ColeteNotFoundError(f"GLS AWB {awb} not found (empty response)")
+
+        parcel = tu_status[0]
+        progress_bar = parcel.get("progressBar", {})
+
+        # Primary status from progressBar.statusInfo
+        status_info = progress_bar.get("statusInfo", "")
+        normalized_status = GLS_STATUS_MAP.get(status_info, STATUS_UNKNOWN)
+
+        # Check retourFlag for returns
+        if progress_bar.get("retourFlag", False):
+            normalized_status = STATUS_RETURNED
+
+        # Progress level (0-100)
+        progress_pct = progress_bar.get("level")
+
+        # Status text — may contain HTML entities (e.g., &#539;)
+        status_text = progress_bar.get("statusText", "")
+        if status_text:
+            status_text = html.unescape(status_text)
+
+        # Detailed status from the CURRENT step's statusText in statusBar
+        status_detail = status_text
+        status_bar = progress_bar.get("statusBar", [])
+        for step in status_bar:
+            if step.get("imageStatus") == "CURRENT":
+                step_text = step.get("statusText", "")
+                if step_text:
+                    status_detail = html.unescape(step_text)
+                break
+
+        # Date from parcel (YYYY-MM-DD format)
+        last_update = parcel.get("date", "")
+
+        is_delivered = normalized_status == STATUS_DELIVERED
+        delivered_date = last_update if is_delivered else None
+
+        return {
+            "courier": COURIER_GLS,
+            "awb": awb,
+            "status": normalized_status,
+            "status_label": STATUS_LABELS.get(normalized_status, "Unknown"),
+            "status_detail": status_detail,
+            "location": "",  # Not available from GLS API
+            "last_update": last_update,
+            "delivered": is_delivered,
+            "delivered_date": delivered_date,
+            "delivered_to": None,  # Not available from GLS API
+            "weight": None,  # Not available from GLS API
+            "events": [],  # GLS only shows current status, no history
+            "progress_pct": progress_pct,
+        }
 
     def close(self) -> None:
         """Close the API session."""
