@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.2.1...v1.3.0) (2026-03-18)
+
+
+### Features
+
+* add brand icons for integration ([689e9a5](https://github.com/emanuelbesliu/homeassistant-colete/commit/689e9a5fc843bb4ded92802da7fc52c8c51b4b0f))
+
 ## [1.2.1](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.2.0...v1.2.1) (2026-03-18)
 
 
