@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.1.0...v1.2.0) (2026-03-18)
+
+
+### Features
+
+* configurable retention_days for delivered parcels ([dae2e9c](https://github.com/emanuelbesliu/homeassistant-colete/commit/dae2e9c18e2266242a8e3ad21ae74982a9cf07cb))
+
 ## [1.1.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.0.2...v1.1.0) (2026-03-18)
 
 
