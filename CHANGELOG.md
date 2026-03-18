@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.3.0...v1.4.0) (2026-03-18)
+
+
+### Features
+
+* add GLS Romania courier support ([5f8d5af](https://github.com/emanuelbesliu/homeassistant-colete/commit/5f8d5af4ff3d6fafb5c5050b1b20e59be2ba4ab4))
+
 ## [1.3.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.2.1...v1.3.0) (2026-03-18)
 
 
