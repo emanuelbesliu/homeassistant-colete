@@ -21,15 +21,17 @@ AUTO_ARCHIVE_DAYS = 30
 COURIER_AUTO = "auto"
 COURIER_SAMEDAY = "sameday"
 COURIER_FAN = "fan_courier"
+COURIER_CARGUS = "cargus"
 
 COURIERS = {
     COURIER_AUTO: "Auto-detect",
     COURIER_SAMEDAY: "Sameday",
     COURIER_FAN: "FAN Courier",
+    COURIER_CARGUS: "Cargus",
 }
 
 # Courier detection order (tried sequentially when auto-detect is used)
-COURIER_DETECT_ORDER = [COURIER_SAMEDAY, COURIER_FAN]
+COURIER_DETECT_ORDER = [COURIER_SAMEDAY, COURIER_FAN, COURIER_CARGUS]
 
 # Sameday API
 SAMEDAY_API_URL = "https://api.sameday.ro/api/public/awb/{awb}/awb-history"
@@ -66,6 +68,11 @@ FAN_STATUS_DELIVERED = "S2"
 # All FAN status codes that indicate in-transit state
 FAN_IN_TRANSIT_CODES = {FAN_STATUS_IN_TRANSIT, FAN_STATUS_IN_TRANSIT_SORTING}
 
+# Cargus tracking (HTML scraping — no public JSON API exists)
+CARGUS_TRACKING_URL = "https://www.cargus.ro/personal/urmareste-coletul/?tracking_number={awb}"
+
+# Cargus status string mappings are defined below (after STATUS_* constants)
+
 # Normalized parcel statuses (courier-agnostic)
 STATUS_UNKNOWN = "unknown"
 STATUS_PICKED_UP = "picked_up"
@@ -87,6 +94,27 @@ STATUS_LABELS = {
     STATUS_RETURNED: "Returned",
     STATUS_CANCELED: "Canceled",
 }
+
+# Cargus status string mappings (Romanian status text from HTML → normalized status)
+# The tracking page returns a single current status string in Romanian.
+# Keys are lowercase substrings matched against the status text (checked in order,
+# longer/more specific strings first to avoid false matches).
+CARGUS_STATUS_MAP = [
+    ("livrat la destinatar", STATUS_DELIVERED),
+    ("livrat", STATUS_DELIVERED),
+    ("in curs de livrare", STATUS_OUT_FOR_DELIVERY),
+    ("disponibil pentru ridicare", STATUS_READY_FOR_PICKUP),
+    ("easybox", STATUS_READY_FOR_PICKUP),
+    ("locker", STATUS_READY_FOR_PICKUP),
+    ("in tranzit", STATUS_IN_TRANSIT),
+    ("depozitat", STATUS_IN_TRANSIT),
+    ("preluat", STATUS_PICKED_UP),
+    ("ridicat", STATUS_PICKED_UP),
+    ("inregistrat", STATUS_PICKED_UP),
+    ("returnat", STATUS_RETURNED),
+    ("retur", STATUS_RETURNED),
+    ("anulat", STATUS_CANCELED),
+]
 
 # Locker/Easybox detection keywords (case-insensitive matching on status text)
 # Sameday uses "easybox" in status labels when parcel is deposited in a locker

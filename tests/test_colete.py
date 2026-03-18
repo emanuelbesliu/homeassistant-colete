@@ -1,7 +1,5 @@
 """Tests for the Colete (Romanian Parcel Tracking) integration."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 pytest.importorskip("homeassistant")
@@ -10,12 +8,12 @@ from custom_components.colete.api import ColeteAPI  # noqa: E402
 from custom_components.colete.const import (  # noqa: E402
     COURIER_SAMEDAY,
     COURIER_FAN,
+    COURIER_CARGUS,
     SAMEDAY_STATE_DELIVERED,
     SAMEDAY_STATE_IN_TRANSIT,
     SAMEDAY_STATE_OUT_FOR_DELIVERY,
     SAMEDAY_STATE_PICKED_UP,
     SAMEDAY_STATE_LOADED_AT_DELIVERY_POINT,
-    SAMEDAY_STATE_CENTRAL_DEPOT,
     SAMEDAY_STATE_REGISTERED,
     STATUS_DELIVERED,
     STATUS_IN_TRANSIT,
@@ -24,6 +22,7 @@ from custom_components.colete.const import (  # noqa: E402
     STATUS_RETURNED,
     STATUS_UNKNOWN,
     STATUS_PICKED_UP,
+    STATUS_CANCELED,
 )
 
 
@@ -498,14 +497,14 @@ def test_fan_invalid_awb_detection():
         # but we can test the condition directly
         data = invalid_response
         if "message" in data and "events" not in data:
-            raise ColeteNotFoundError(f"FAN Courier AWB test not found")
+            raise ColeteNotFoundError("FAN Courier AWB test not found")
 
     # Malformed AWB response
     malformed_response = {"message": "The reference.0 format is invalid."}
     with pytest.raises(ColeteNotFoundError):
         data = malformed_response
         if "message" in data and "events" not in data:
-            raise ColeteNotFoundError(f"FAN Courier AWB test not found")
+            raise ColeteNotFoundError("FAN Courier AWB test not found")
 
     api.close()
 
@@ -523,3 +522,242 @@ def test_matches_locker_keywords():
     assert not ColeteAPI._matches_locker_keywords("In tranzit", ["easybox", "fanbox"])
     assert not ColeteAPI._matches_locker_keywords("", ["easybox"])
     assert not ColeteAPI._matches_locker_keywords(None, ["easybox"])
+
+
+# ============================================================
+# Cargus fixtures (real HTML snippets from AWB INDX15452666)
+# ============================================================
+
+# Delivered parcel — real HTML from cargus.ro tracking page
+MOCK_CARGUS_DELIVERED_HTML = """
+<html><body>
+<div class="tracking-response-container">
+  <h3 class="trk-title">Detalii de tracking pentru AWB INDX15452666</h3>
+  <p class="trk-update-time">11 December 2025, 12:12</p>
+  <div class="trk-response-card">
+    <div class="trk-status-container">
+      <img decoding="async" src="/wp-content/uploads/cargus-theme/status-bell.svg" />
+      <span>Livrat la destinatar (confirmat)</span>
+    </div>
+    <style>
+      .trk-progress-bar > div {
+        width: 100%;
+        background-image: linear-gradient(to right, #A74CB5, #B95992, #F58220, #F9BB4A, #0DCE5A);
+      }
+    </style>
+    <div class="trk-progress-bar"><div></div></div>
+  </div>
+</div>
+</body></html>
+"""
+
+# In-transit parcel (simulated — same HTML structure, different status)
+MOCK_CARGUS_IN_TRANSIT_HTML = """
+<html><body>
+<div class="tracking-response-container">
+  <h3 class="trk-title">Detalii de tracking pentru AWB CARGUS123456</h3>
+  <p class="trk-update-time">18 March 2026, 09:30</p>
+  <div class="trk-response-card">
+    <div class="trk-status-container">
+      <img decoding="async" src="/wp-content/uploads/cargus-theme/status-truck.svg" />
+      <span>In tranzit</span>
+    </div>
+    <style>
+      .trk-progress-bar > div {
+        width: 50%;
+        background-image: linear-gradient(to right, #A74CB5, #B95992, #F58220);
+      }
+    </style>
+    <div class="trk-progress-bar"><div></div></div>
+  </div>
+</div>
+</body></html>
+"""
+
+# Out for delivery parcel
+MOCK_CARGUS_OUT_FOR_DELIVERY_HTML = """
+<html><body>
+<div class="tracking-response-container">
+  <h3 class="trk-title">Detalii de tracking pentru AWB CARGUS789012</h3>
+  <p class="trk-update-time">18 March 2026, 14:00</p>
+  <div class="trk-response-card">
+    <div class="trk-status-container">
+      <span>In curs de livrare</span>
+    </div>
+    <style>
+      .trk-progress-bar > div {
+        width: 80%;
+      }
+    </style>
+    <div class="trk-progress-bar"><div></div></div>
+  </div>
+</div>
+</body></html>
+"""
+
+# Picked up parcel
+MOCK_CARGUS_PICKED_UP_HTML = """
+<html><body>
+<div class="tracking-response-container">
+  <h3 class="trk-title">Detalii de tracking pentru AWB CARGUS345678</h3>
+  <p class="trk-update-time">18 March 2026, 08:00</p>
+  <div class="trk-response-card">
+    <div class="trk-status-container">
+      <span>Colet preluat de la expeditor</span>
+    </div>
+    <style>
+      .trk-progress-bar > div {
+        width: 20%;
+      }
+    </style>
+    <div class="trk-progress-bar"><div></div></div>
+  </div>
+</div>
+</body></html>
+"""
+
+# Not found response
+MOCK_CARGUS_NOT_FOUND_HTML = """
+<html><body>
+<div class="not-found-response">Nu am gasit nici un colet!</div>
+</body></html>
+"""
+
+# Empty page (no tracking container, no not-found)
+MOCK_CARGUS_EMPTY_HTML = """
+<html><body>
+<div class="main-content"></div>
+</body></html>
+"""
+
+# Returned parcel
+MOCK_CARGUS_RETURNED_HTML = """
+<html><body>
+<div class="tracking-response-container">
+  <h3 class="trk-title">Detalii de tracking pentru AWB CARGUS999999</h3>
+  <p class="trk-update-time">17 March 2026, 16:00</p>
+  <div class="trk-response-card">
+    <div class="trk-status-container">
+      <span>Returnat la expeditor</span>
+    </div>
+    <style>
+      .trk-progress-bar > div {
+        width: 100%;
+      }
+    </style>
+    <div class="trk-progress-bar"><div></div></div>
+  </div>
+</div>
+</body></html>
+"""
+
+
+# ============================================================
+# Cargus tests
+# ============================================================
+
+
+def test_parse_cargus_delivered():
+    """Test parsing a Cargus delivered response (real AWB data)."""
+    api = ColeteAPI()
+    result = api._parse_cargus(MOCK_CARGUS_DELIVERED_HTML, "INDX15452666")
+
+    assert result["courier"] == COURIER_CARGUS
+    assert result["awb"] == "INDX15452666"
+    assert result["status"] == STATUS_DELIVERED
+    assert result["status_label"] == "Delivered"
+    assert result["status_detail"] == "Livrat la destinatar (confirmat)"
+    assert result["last_update"] == "11 December 2025, 12:12"
+    assert result["delivered"] is True
+    assert result["delivered_date"] == "11 December 2025, 12:12"
+    assert result["delivered_to"] is None  # Not available from Cargus
+    assert result["weight"] is None  # Not available from Cargus
+    assert result["events"] == []  # Cargus only shows current status
+    assert result["progress_pct"] == 100
+    assert result["location"] == ""  # Not available from Cargus
+    api.close()
+
+
+def test_parse_cargus_in_transit():
+    """Test parsing a Cargus in-transit response."""
+    api = ColeteAPI()
+    result = api._parse_cargus(MOCK_CARGUS_IN_TRANSIT_HTML, "CARGUS123456")
+
+    assert result["courier"] == COURIER_CARGUS
+    assert result["status"] == STATUS_IN_TRANSIT
+    assert result["status_detail"] == "In tranzit"
+    assert result["last_update"] == "18 March 2026, 09:30"
+    assert result["delivered"] is False
+    assert result["delivered_date"] is None
+    assert result["progress_pct"] == 50
+    api.close()
+
+
+def test_parse_cargus_out_for_delivery():
+    """Test parsing a Cargus out-for-delivery response."""
+    api = ColeteAPI()
+    result = api._parse_cargus(MOCK_CARGUS_OUT_FOR_DELIVERY_HTML, "CARGUS789012")
+
+    assert result["status"] == STATUS_OUT_FOR_DELIVERY
+    assert result["status_detail"] == "In curs de livrare"
+    assert result["delivered"] is False
+    assert result["progress_pct"] == 80
+    api.close()
+
+
+def test_parse_cargus_picked_up():
+    """Test parsing a Cargus picked-up response."""
+    api = ColeteAPI()
+    result = api._parse_cargus(MOCK_CARGUS_PICKED_UP_HTML, "CARGUS345678")
+
+    assert result["status"] == STATUS_PICKED_UP
+    assert result["status_detail"] == "Colet preluat de la expeditor"
+    assert result["delivered"] is False
+    assert result["progress_pct"] == 20
+    api.close()
+
+
+def test_parse_cargus_not_found():
+    """Test Cargus not-found response raises ColeteNotFoundError."""
+    from custom_components.colete.api import ColeteNotFoundError
+
+    api = ColeteAPI()
+    with pytest.raises(ColeteNotFoundError, match="not found"):
+        api._parse_cargus(MOCK_CARGUS_NOT_FOUND_HTML, "INVALID123")
+    api.close()
+
+
+def test_parse_cargus_empty_page():
+    """Test Cargus empty page (no tracking container) raises ColeteNotFoundError."""
+    from custom_components.colete.api import ColeteNotFoundError
+
+    api = ColeteAPI()
+    with pytest.raises(ColeteNotFoundError, match="no tracking data"):
+        api._parse_cargus(MOCK_CARGUS_EMPTY_HTML, "EMPTY123")
+    api.close()
+
+
+def test_parse_cargus_returned():
+    """Test parsing a Cargus returned parcel response."""
+    api = ColeteAPI()
+    result = api._parse_cargus(MOCK_CARGUS_RETURNED_HTML, "CARGUS999999")
+
+    assert result["status"] == STATUS_RETURNED
+    assert result["status_label"] == "Returned"
+    assert result["delivered"] is False
+    assert result["delivered_date"] is None
+    api.close()
+
+
+def test_normalize_cargus_status():
+    """Test Cargus status normalization with various Romanian strings."""
+    assert ColeteAPI._normalize_cargus_status("Livrat la destinatar (confirmat)") == STATUS_DELIVERED
+    assert ColeteAPI._normalize_cargus_status("Livrat") == STATUS_DELIVERED
+    assert ColeteAPI._normalize_cargus_status("In curs de livrare") == STATUS_OUT_FOR_DELIVERY
+    assert ColeteAPI._normalize_cargus_status("In tranzit") == STATUS_IN_TRANSIT
+    assert ColeteAPI._normalize_cargus_status("Colet preluat de la expeditor") == STATUS_PICKED_UP
+    assert ColeteAPI._normalize_cargus_status("Expeditie ridicata") == STATUS_PICKED_UP
+    assert ColeteAPI._normalize_cargus_status("Returnat la expeditor") == STATUS_RETURNED
+    assert ColeteAPI._normalize_cargus_status("Comanda anulata") == STATUS_CANCELED
+    assert ColeteAPI._normalize_cargus_status("") == STATUS_UNKNOWN
+    assert ColeteAPI._normalize_cargus_status("Status necunoscut xyz") == STATUS_UNKNOWN

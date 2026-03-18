@@ -1,17 +1,22 @@
 """API clients for Romanian parcel tracking couriers."""
 
 import logging
+import re
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 
 from .const import (
     COURIER_AUTO,
     COURIER_SAMEDAY,
     COURIER_FAN,
+    COURIER_CARGUS,
     COURIER_DETECT_ORDER,
     SAMEDAY_API_URL,
     FAN_API_URL,
+    CARGUS_TRACKING_URL,
+    CARGUS_STATUS_MAP,
     SAMEDAY_STATE_DELIVERED,
     SAMEDAY_STATE_OUT_FOR_DELIVERY,
     SAMEDAY_STATE_PICKED_UP,
@@ -95,6 +100,8 @@ class ColeteAPI:
             return self._track_sameday(awb)
         elif courier == COURIER_FAN:
             return self._track_fan(awb)
+        elif courier == COURIER_CARGUS:
+            return self._track_cargus(awb)
         else:
             raise ColeteApiError(f"Unsupported courier: {courier}")
 
@@ -114,9 +121,7 @@ class ColeteAPI:
         for courier in COURIER_DETECT_ORDER:
             try:
                 result = self.track_parcel(courier, awb)
-                _LOGGER.debug(
-                    "Auto-detected courier %s for AWB %s", courier, awb
-                )
+                _LOGGER.debug("Auto-detected courier %s for AWB %s", courier, awb)
                 return result
             except ColeteNotFoundError:
                 _LOGGER.debug(
@@ -126,19 +131,13 @@ class ColeteAPI:
                 )
                 continue
             except ColeteApiError as err:
-                _LOGGER.debug(
-                    "Error checking %s for AWB %s: %s", courier, awb, err
-                )
+                _LOGGER.debug("Error checking %s for AWB %s: %s", courier, awb, err)
                 last_error = err
                 continue
 
         if last_error:
-            raise ColeteNotFoundError(
-                f"AWB {awb} not found with any courier (last error: {last_error})"
-            )
-        raise ColeteNotFoundError(
-            f"AWB {awb} not found with any supported courier"
-        )
+            raise ColeteNotFoundError(f"AWB {awb} not found with any courier (last error: {last_error})")
+        raise ColeteNotFoundError(f"AWB {awb} not found with any supported courier")
 
     def validate_awb(self, courier: str, awb: str) -> dict[str, Any]:
         """Validate that an AWB exists and return tracking data.
@@ -162,21 +161,13 @@ class ColeteAPI:
         params = {"_locale": "ro"}
 
         try:
-            response = self._session.get(
-                url, params=params, timeout=REQUEST_TIMEOUT
-            )
+            response = self._session.get(url, params=params, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout as err:
-            raise ColeteApiError(
-                f"Timeout connecting to Sameday API: {err}"
-            ) from err
+            raise ColeteApiError(f"Timeout connecting to Sameday API: {err}") from err
         except requests.exceptions.ConnectionError as err:
-            raise ColeteApiError(
-                f"Connection error to Sameday API: {err}"
-            ) from err
+            raise ColeteApiError(f"Connection error to Sameday API: {err}") from err
         except requests.exceptions.RequestException as err:
-            raise ColeteApiError(
-                f"Error fetching Sameday data: {err}"
-            ) from err
+            raise ColeteApiError(f"Error fetching Sameday data: {err}") from err
 
         if response.status_code == 404:
             raise ColeteNotFoundError(f"Sameday AWB {awb} not found")
@@ -184,16 +175,12 @@ class ColeteAPI:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
-            raise ColeteApiError(
-                f"HTTP error from Sameday API: {err}"
-            ) from err
+            raise ColeteApiError(f"HTTP error from Sameday API: {err}") from err
 
         try:
             data = response.json()
         except ValueError as err:
-            raise ColeteApiError(
-                f"Invalid JSON from Sameday API: {err}"
-            ) from err
+            raise ColeteApiError(f"Invalid JSON from Sameday API: {err}") from err
 
         return self._parse_sameday(data, awb)
 
@@ -260,12 +247,8 @@ class ColeteAPI:
             normalized_status = STATUS_RETURNED
         else:
             # Check status text for return/cancel keywords
-            latest_status_text = (
-                latest_event.get("status", "") or ""
-            ).lower()
-            latest_state_text = (
-                latest_event.get("statusState", "") or ""
-            ).lower()
+            latest_status_text = (latest_event.get("status", "") or "").lower()
+            latest_state_text = (latest_event.get("statusState", "") or "").lower()
             combined_text = f"{latest_status_text} {latest_state_text}"
             if "retur" in combined_text or "returnat" in combined_text:
                 normalized_status = STATUS_RETURNED
@@ -284,14 +267,8 @@ class ColeteAPI:
                 normalized_status = STATUS_READY_FOR_PICKUP
             else:
                 # Fallback: check status text for locker keywords
-                current_label = (
-                    latest_event.get("status", "")
-                    or latest_event.get("statusState", "")
-                    or ""
-                )
-                if self._matches_locker_keywords(
-                    current_label, SAMEDAY_LOCKER_KEYWORDS
-                ):
+                current_label = latest_event.get("status", "") or latest_event.get("statusState", "") or ""
+                if self._matches_locker_keywords(current_label, SAMEDAY_LOCKER_KEYWORDS):
                     normalized_status = STATUS_READY_FOR_PICKUP
 
         # Extract location from latest event
@@ -327,9 +304,7 @@ class ColeteAPI:
             )
 
         # Status detail from the latest event
-        status_detail = latest_event.get(
-            "status", latest_event.get("statusState", "")
-        )
+        status_detail = latest_event.get("status", latest_event.get("statusState", ""))
 
         return {
             "courier": COURIER_SAMEDAY,
@@ -361,21 +336,13 @@ class ColeteAPI:
         }
 
         try:
-            response = self._session.post(
-                FAN_API_URL, data=form_data, timeout=REQUEST_TIMEOUT
-            )
+            response = self._session.post(FAN_API_URL, data=form_data, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout as err:
-            raise ColeteApiError(
-                f"Timeout connecting to FAN Courier API: {err}"
-            ) from err
+            raise ColeteApiError(f"Timeout connecting to FAN Courier API: {err}") from err
         except requests.exceptions.ConnectionError as err:
-            raise ColeteApiError(
-                f"Connection error to FAN Courier API: {err}"
-            ) from err
+            raise ColeteApiError(f"Connection error to FAN Courier API: {err}") from err
         except requests.exceptions.RequestException as err:
-            raise ColeteApiError(
-                f"Error fetching FAN Courier data: {err}"
-            ) from err
+            raise ColeteApiError(f"Error fetching FAN Courier data: {err}") from err
 
         if response.status_code == 429:
             raise ColeteApiError("FAN Courier API rate limit exceeded")
@@ -383,16 +350,12 @@ class ColeteAPI:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
-            raise ColeteApiError(
-                f"HTTP error from FAN Courier API: {err}"
-            ) from err
+            raise ColeteApiError(f"HTTP error from FAN Courier API: {err}") from err
 
         try:
             data = response.json()
         except ValueError as err:
-            raise ColeteApiError(
-                f"Invalid JSON from FAN Courier API: {err}"
-            ) from err
+            raise ColeteApiError(f"Invalid JSON from FAN Courier API: {err}") from err
 
         # FAN returns empty or error structure for invalid AWBs
         # Real invalid responses: {"message": "..."} with no events/awbNumber
@@ -407,9 +370,7 @@ class ColeteAPI:
 
         # Detect invalid AWB: response has "message" but no "events" or "awbNumber"
         if "message" in data and "events" not in data:
-            raise ColeteNotFoundError(
-                f"FAN Courier AWB {awb} not found: {data.get('message', '')}"
-            )
+            raise ColeteNotFoundError(f"FAN Courier AWB {awb} not found: {data.get('message', '')}")
 
         return self._parse_fan(data, awb)
 
@@ -467,9 +428,7 @@ class ColeteAPI:
             # Check for locker/fanbox status — parcel deposited in a locker
             # awaiting customer pickup. Override unless already delivered.
             if normalized_status != STATUS_DELIVERED:
-                if self._matches_locker_keywords(
-                    last_event_name, FAN_LOCKER_KEYWORDS
-                ):
+                if self._matches_locker_keywords(last_event_name, FAN_LOCKER_KEYWORDS):
                     normalized_status = STATUS_READY_FOR_PICKUP
 
         # Check for returned parcels (returnAwbNumber populated)
@@ -516,6 +475,135 @@ class ColeteAPI:
             "weight": weight,
             "events": events,
         }
+
+    def _track_cargus(self, awb: str) -> dict[str, Any]:
+        """Track a Cargus (Urgent Cargus) parcel via HTML scraping.
+
+        There is no public JSON API for Cargus tracking. We scrape the
+        WordPress tracking page at cargus.ro which renders the result
+        server-side (no JS required, no CAPTCHA).
+
+        URL: GET https://www.cargus.ro/personal/urmareste-coletul/?tracking_number=<AWB>
+        IMPORTANT: Must use the Romanian URL. The English version returns
+        "Parcel not found" even for valid AWBs.
+        """
+        url = CARGUS_TRACKING_URL.format(awb=awb)
+
+        try:
+            response = self._session.get(url, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.Timeout as err:
+            raise ColeteApiError(f"Timeout connecting to Cargus tracking page: {err}") from err
+        except requests.exceptions.ConnectionError as err:
+            raise ColeteApiError(f"Connection error to Cargus tracking page: {err}") from err
+        except requests.exceptions.RequestException as err:
+            raise ColeteApiError(f"Error fetching Cargus tracking page: {err}") from err
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise ColeteApiError(f"HTTP error from Cargus tracking page: {err}") from err
+
+        return self._parse_cargus(response.text, awb)
+
+    def _parse_cargus(self, html: str, awb: str) -> dict[str, Any]:
+        """Parse Cargus tracking page HTML into normalized format.
+
+        The tracking page provides limited data compared to Sameday/FAN:
+        - Only the current status (no event history)
+        - No location data
+        - No weight data
+        - A last-update timestamp
+        - A progress bar width percentage
+
+        HTML structure (successful):
+            <div class="tracking-response-container">
+              <h3 class="trk-title">Detalii de tracking pentru AWB ...</h3>
+              <p class="trk-update-time">11 December 2025, 12:12</p>
+              <div class="trk-status-container">
+                <span>Livrat la destinatar (confirmat)</span>
+              </div>
+              <style>.trk-progress-bar > div { width: 100%; ... }</style>
+            </div>
+
+        HTML structure (not found):
+            <div class="not-found-response">Nu am gasit nici un colet!</div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Check for not-found response
+        not_found = soup.select_one(".not-found-response")
+        if not_found:
+            raise ColeteNotFoundError(f"Cargus AWB {awb} not found")
+
+        # Check for tracking response container
+        container = soup.select_one(".tracking-response-container")
+        if not container:
+            raise ColeteNotFoundError(f"Cargus AWB {awb}: no tracking data found in response")
+
+        # Extract status text from .trk-status-container span
+        status_text = ""
+        status_container = container.select_one(".trk-status-container span")
+        if status_container:
+            status_text = status_container.get_text(strip=True)
+
+        # Extract last update time from .trk-update-time
+        last_update = ""
+        update_time_el = container.select_one(".trk-update-time")
+        if update_time_el:
+            last_update = update_time_el.get_text(strip=True)
+
+        # Extract progress bar width from inline <style> tag
+        # The style contains: .trk-progress-bar > div { width: NN%; ... }
+        progress_pct = None
+        style_tag = container.select_one("style")
+        if style_tag:
+            style_text = style_tag.string or ""
+            width_match = re.search(r"width:\s*(\d+)%", style_text)
+            if width_match:
+                progress_pct = int(width_match.group(1))
+
+        # Normalize the status text to a standard status
+        normalized_status = self._normalize_cargus_status(status_text)
+
+        is_delivered = normalized_status == STATUS_DELIVERED
+        delivered_date = last_update if is_delivered else None
+
+        return {
+            "courier": COURIER_CARGUS,
+            "awb": awb,
+            "status": normalized_status,
+            "status_label": STATUS_LABELS.get(normalized_status, "Unknown"),
+            "status_detail": status_text,
+            "location": "",  # Not available from Cargus tracking page
+            "last_update": last_update,
+            "delivered": is_delivered,
+            "delivered_date": delivered_date,
+            "delivered_to": None,  # Not available from Cargus tracking page
+            "weight": None,  # Not available from Cargus tracking page
+            "events": [],  # Cargus only shows current status, no history
+            "progress_pct": progress_pct,
+        }
+
+    @staticmethod
+    def _normalize_cargus_status(status_text: str) -> str:
+        """Normalize a Cargus Romanian status string to a standard status.
+
+        Matches against CARGUS_STATUS_MAP entries in order (longer/more
+        specific patterns first). Falls back to STATUS_UNKNOWN.
+
+        Args:
+            status_text: The Romanian status string from the tracking page.
+
+        Returns:
+            Normalized status constant (e.g., STATUS_DELIVERED).
+        """
+        if not status_text:
+            return STATUS_UNKNOWN
+        text_lower = status_text.lower()
+        for pattern, status in CARGUS_STATUS_MAP:
+            if pattern in text_lower:
+                return status
+        return STATUS_UNKNOWN
 
     def close(self) -> None:
         """Close the API session."""
