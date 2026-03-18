@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.0.2...v1.1.0) (2026-03-18)
+
+
+### Features
+
+* add Cargus courier support via HTML scraping ([6ac97b1](https://github.com/emanuelbesliu/homeassistant-colete/commit/6ac97b1d014de17487d609d6c5c932c8b0d099aa))
+
+
+### Bug Fixes
+
+* add beautifulsoup4 to CI import test dependencies ([77a6ffc](https://github.com/emanuelbesliu/homeassistant-colete/commit/77a6ffcd0b402b11cd34abd118d7e190e2893448))
+
 ## [1.0.2](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.0.1...v1.0.2) (2026-03-18)
 
 
