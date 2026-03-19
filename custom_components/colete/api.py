@@ -15,6 +15,7 @@ from .const import (
     COURIER_FAN,
     COURIER_CARGUS,
     COURIER_GLS,
+    COURIER_DPD,
     COURIER_DETECT_ORDER,
     SAMEDAY_API_URL,
     FAN_API_URL,
@@ -22,6 +23,12 @@ from .const import (
     CARGUS_STATUS_MAP,
     GLS_API_URL,
     GLS_STATUS_MAP,
+    DPD_API_URL,
+    DPD_STATUS_MAP,
+    DPD_SCAN_DELIVERED,
+    DPD_SCAN_NOT_DELIVERED,
+    DPD_SCAN_STORE_DROPOFF,
+    DPD_ADDITIONAL_PARCELSHOP,
     SAMEDAY_STATE_DELIVERED,
     SAMEDAY_STATE_OUT_FOR_DELIVERY,
     SAMEDAY_STATE_PICKED_UP,
@@ -109,6 +116,8 @@ class ColeteAPI:
             return self._track_cargus(awb)
         elif courier == COURIER_GLS:
             return self._track_gls(awb)
+        elif courier == COURIER_DPD:
+            return self._track_dpd(awb)
         else:
             raise ColeteApiError(f"Unsupported courier: {courier}")
 
@@ -759,6 +768,255 @@ class ColeteAPI:
             "weight": None,  # Not available from GLS API
             "events": [],  # GLS only shows current status, no history
             "progress_pct": progress_pct,
+        }
+
+    def _track_dpd(self, awb: str) -> dict[str, Any]:
+        """Track a DPD Romania parcel via the DPD Germany tracking REST API.
+
+        API: GET https://tracking.dpd.de/rest/plc/ro_RO/{AWB}
+        No authentication required. Returns JSON with parcellifecycleResponse.
+        Uses ro_RO locale for Romanian status labels.
+        """
+        url = DPD_API_URL.format(awb=awb)
+
+        try:
+            response = self._session.get(url, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.Timeout as err:
+            raise ColeteApiError(
+                f"Timeout connecting to DPD API: {err}"
+            ) from err
+        except requests.exceptions.ConnectionError as err:
+            raise ColeteApiError(
+                f"Connection error to DPD API: {err}"
+            ) from err
+        except requests.exceptions.RequestException as err:
+            raise ColeteApiError(f"Error fetching DPD data: {err}") from err
+
+        if response.status_code == 429:
+            raise ColeteApiError("DPD API rate limit exceeded")
+
+        if response.status_code == 404:
+            raise ColeteNotFoundError(f"DPD AWB {awb} not found")
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise ColeteApiError(f"HTTP error from DPD API: {err}") from err
+
+        try:
+            data = response.json()
+        except ValueError as err:
+            raise ColeteApiError(f"Invalid JSON from DPD API: {err}") from err
+
+        return self._parse_dpd(data, awb)
+
+    def _parse_dpd(self, data: dict[str, Any], awb: str) -> dict[str, Any]:
+        """Parse DPD tracking API response into normalized format.
+
+        API response structure:
+        {
+            "parcellifecycleResponse": {
+                "parcelLifeCycleData": {
+                    "shipmentInfo": {
+                        "parcelLabelNumber": "...",
+                        "additionalProperties": [
+                            {"key": "RECEIVER_NAME", "value": "..."}
+                        ]
+                    },
+                    "statusInfo": [
+                        {
+                            "status": "ACCEPTED",
+                            "label": "Colet predat catre DPD",
+                            "statusHasBeenReached": true,
+                            "isCurrentStatus": false,
+                            "description": {"content": [...]},
+                            ...
+                        },
+                        ... (5 stages: ACCEPTED, ON_THE_ROAD,
+                             AT_DELIVERY_DEPOT, OUT_FOR_DELIVERY, DELIVERED)
+                    ],
+                    "scanInfo": {
+                        "scan": [
+                            {
+                                "date": "2026-01-20T12:23:23",
+                                "scanData": {
+                                    "scanType": {"code": "13", "name": "..."},
+                                    "location": "Bucuresti (RO)",
+                                    "additionalCodes": {
+                                        "additionalCode": [{"code": "068"}]
+                                    }
+                                },
+                                "scanDescription": {"content": ["..."]},
+                                "links": [...]
+                            },
+                            ...
+                        ]
+                    }
+                }
+            }
+        }
+
+        Returns null parcelLifeCycleData for unknown AWBs.
+        """
+        plc_response = data.get("parcellifecycleResponse", {})
+        plc_data = plc_response.get("parcelLifeCycleData")
+
+        if plc_data is None:
+            raise ColeteNotFoundError(f"DPD AWB {awb} not found")
+
+        # --- Extract current status from statusInfo progress bar ---
+        status_info_list = plc_data.get("statusInfo", [])
+        current_status_code = None
+        current_status_label = ""
+        current_status_description = ""
+
+        for stage in status_info_list:
+            if stage.get("isCurrentStatus", False):
+                current_status_code = stage.get("status", "")
+                current_status_label = stage.get("label", "")
+                desc = stage.get("description", {})
+                if desc and desc.get("content"):
+                    current_status_description = desc["content"][0]
+                break
+
+        # If no stage has isCurrentStatus=True, check for any reached stage
+        # (take the last reached one)
+        if current_status_code is None:
+            for stage in reversed(status_info_list):
+                if stage.get("statusHasBeenReached", False):
+                    current_status_code = stage.get("status", "")
+                    current_status_label = stage.get("label", "")
+                    desc = stage.get("description", {})
+                    if desc and desc.get("content"):
+                        current_status_description = desc["content"][0]
+                    break
+
+        # If still no status found (pre-registered, no stages reached),
+        # check if we have any statusInfo at all
+        if current_status_code is None:
+            if status_info_list:
+                # Default to first stage (ACCEPTED) as registered
+                current_status_code = status_info_list[0].get("status", "")
+                current_status_label = status_info_list[0].get("label", "")
+
+        # Map to normalized status
+        normalized_status = DPD_STATUS_MAP.get(
+            current_status_code or "", STATUS_UNKNOWN
+        )
+
+        # --- Parse scan events for detailed info ---
+        scan_info = plc_data.get("scanInfo", {})
+        scans = scan_info.get("scan", [])
+
+        # Check scan events for parcel shop delivery (override status)
+        is_parcel_shop = False
+        for scan in scans:
+            scan_data = scan.get("scanData", {})
+            scan_type = scan_data.get("scanType", {})
+            scan_code = str(scan_type.get("code", ""))
+
+            if scan_code == DPD_SCAN_STORE_DROPOFF:
+                is_parcel_shop = True
+                break
+
+            # Check for parcel shop redirect in not-delivered events
+            if scan_code == DPD_SCAN_NOT_DELIVERED:
+                additional_codes = scan_data.get("additionalCodes", {})
+                add_code_list = additional_codes.get("additionalCode", [])
+                for ac in add_code_list:
+                    if str(ac.get("code", "")) == DPD_ADDITIONAL_PARCELSHOP:
+                        is_parcel_shop = True
+                        break
+
+        # Override status if parcel is at a parcel shop and not yet delivered
+        if is_parcel_shop and normalized_status != STATUS_DELIVERED:
+            normalized_status = STATUS_READY_FOR_PICKUP
+
+        # --- Extract location from latest scan event ---
+        location = ""
+        last_update = ""
+        if scans:
+            # Scans are typically ordered chronologically; take the last one
+            latest_scan = scans[-1]
+            last_update = latest_scan.get("date", "")
+            scan_data = latest_scan.get("scanData", {})
+            raw_location = scan_data.get("location", "")
+            # Location format: "City (CC)" — extract just the city
+            if raw_location:
+                loc_match = re.match(r"^(.+)\s+\([A-Z]{2}\)$", raw_location)
+                if loc_match:
+                    location = loc_match.group(1).strip()
+                else:
+                    location = raw_location
+
+        # --- Extract shipment info ---
+        shipment_info = plc_data.get("shipmentInfo", {})
+        additional_props = shipment_info.get("additionalProperties", [])
+
+        # Extract receiver name
+        delivered_to = None
+        for prop in additional_props:
+            if prop.get("key") == "RECEIVER_NAME":
+                delivered_to = prop.get("value")
+                break
+
+        # --- Delivery info ---
+        is_delivered = normalized_status == STATUS_DELIVERED
+        delivered_date = None
+        if is_delivered:
+            # Find delivery scan event for the exact timestamp
+            for scan in reversed(scans):
+                scan_data = scan.get("scanData", {})
+                scan_type = scan_data.get("scanType", {})
+                if str(scan_type.get("code", "")) == DPD_SCAN_DELIVERED:
+                    delivered_date = scan.get("date", "")
+                    break
+            # Fallback to last scan date if no specific delivery scan
+            if not delivered_date and scans:
+                delivered_date = scans[-1].get("date", "")
+
+        # --- Build events list from scan history ---
+        events = []
+        for scan in scans:
+            scan_data = scan.get("scanData", {})
+            scan_desc = scan.get("scanDescription", {})
+            desc_content = scan_desc.get("content", [])
+            description = desc_content[0] if desc_content else ""
+
+            raw_loc = scan_data.get("location", "")
+            event_location = raw_loc
+            if raw_loc:
+                loc_match = re.match(r"^(.+)\s+\([A-Z]{2}\)$", raw_loc)
+                if loc_match:
+                    event_location = loc_match.group(1).strip()
+
+            scan_type = scan_data.get("scanType", {})
+
+            events.append(
+                {
+                    "date": scan.get("date", ""),
+                    "status": description,
+                    "location": event_location,
+                    "scan_code": str(scan_type.get("code", "")),
+                }
+            )
+
+        # Status detail — prefer scan description, fall back to status label
+        status_detail = current_status_description or current_status_label
+
+        return {
+            "courier": COURIER_DPD,
+            "awb": awb,
+            "status": normalized_status,
+            "status_label": STATUS_LABELS.get(normalized_status, "Unknown"),
+            "status_detail": status_detail,
+            "location": location,
+            "last_update": last_update,
+            "delivered": is_delivered,
+            "delivered_date": delivered_date,
+            "delivered_to": delivered_to if is_delivered else None,
+            "weight": None,  # Not available from DPD API
+            "events": events,
         }
 
     def close(self) -> None:

@@ -11,6 +11,7 @@ from custom_components.colete.const import (  # noqa: E402
     COURIER_FAN,
     COURIER_CARGUS,
     COURIER_GLS,
+    COURIER_DPD,
     DEFAULT_RETENTION_DAYS,
     MIN_RETENTION_DAYS,
     MAX_RETENTION_DAYS,
@@ -890,7 +891,10 @@ MOCK_GLS_DELIVERED = {
                         "imageStatus": "CURRENT",
                         "imageText": "Livrat",
                         "status": "DELIVERED",
-                        "statusText": "Coletul a fost livrat. Pentru detalii, vizualiza&#539;i istoricul coletului mai jos.",
+                        "statusText": (
+                            "Coletul a fost livrat. Pentru detalii,"
+                            " vizualiza&#539;i istoricul coletului mai jos."
+                        ),
                     },
                 ],
                 "statusInfo": "DELIVERED",
@@ -1277,4 +1281,850 @@ def test_parse_gls_html_entities():
     assert "&#" not in result["status_detail"]
     # Main statusText should also be decoded
     assert "&#" not in result["status_label"]
+    api.close()
+
+
+# ============================================================
+# DPD Romania fixtures (based on real API response structure
+# from tracking.dpd.de/rest/plc/ro_RO/{AWB})
+# ============================================================
+
+# Delivered parcel — full response with scan events
+MOCK_DPD_DELIVERED = {
+    "parcellifecycleResponse": {
+        "parcelLifeCycleData": {
+            "shipmentInfo": {
+                "parcelLabelNumber": "09981100001234",
+                "serviceElements": [],
+                "codInformationAvailable": False,
+                "documents": [],
+                "additionalProperties": [
+                    {
+                        "key": "PARCEL_ID",
+                        "value": "20260120-0000-8000-a009-981100001234",
+                    },
+                    {"key": "RECEIVER_NAME", "value": "Ion Popescu"},
+                ],
+            },
+            "statusInfo": [
+                {
+                    "status": "ACCEPTED",
+                    "label": "Colet predat catre DPD",
+                    "description": {
+                        "content": [
+                            "DPD a receptionat coletul dumneavoastra."
+                        ]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "ON_THE_ROAD",
+                    "label": "In drum",
+                    "description": {
+                        "content": ["Coletul este in tranzit."]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "AT_DELIVERY_DEPOT",
+                    "label": "La depozitul de livrare",
+                    "description": {
+                        "content": [
+                            "Coletul a ajuns la depozitul de livrare."
+                        ]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "OUT_FOR_DELIVERY",
+                    "label": "In curs de livrare",
+                    "description": {
+                        "content": [
+                            "Coletul este in curs de livrare."
+                        ]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "DELIVERED",
+                    "label": "Livrat",
+                    "description": {
+                        "content": [
+                            "Coletul a fost livrat cu succes."
+                        ]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": True,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+            ],
+            "contactInfo": [],
+            "scanInfo": {
+                "scan": [
+                    {
+                        "date": "2026-01-18T16:30:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "15",
+                                "name": "SC_15_PICKUP",
+                            },
+                            "location": "Bucuresti (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": []
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": ["Coletul a fost ridicat de la expeditor."]
+                        },
+                        "links": [],
+                    },
+                    {
+                        "date": "2026-01-19T08:15:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "1",
+                                "name": "SC_1_SORT",
+                            },
+                            "location": "Bucuresti (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": []
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": ["Coletul a fost sortat in depozit."]
+                        },
+                        "links": [],
+                    },
+                    {
+                        "date": "2026-01-19T14:00:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "4",
+                                "name": "SC_4_INBOUND",
+                            },
+                            "location": "Iasi (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": []
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul a ajuns la depozitul de destinatie."
+                            ]
+                        },
+                        "links": [],
+                    },
+                    {
+                        "date": "2026-01-20T09:00:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "3",
+                                "name": "SC_3_IN_DELIVERY",
+                            },
+                            "location": "Iasi (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": []
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul este in curs de livrare."
+                            ]
+                        },
+                        "links": [],
+                    },
+                    {
+                        "date": "2026-01-20T12:23:23",
+                        "scanData": {
+                            "scanType": {
+                                "code": "13",
+                                "name": "SC_13_DELIVERED",
+                            },
+                            "location": "Iasi (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": [{"code": "068"}]
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": ["Coletul a fost livrat."]
+                        },
+                        "links": [
+                            {
+                                "target": "DOCUMENT_POD_V2",
+                                "url": "https://tracking.dpd.de/pod/...",
+                            }
+                        ],
+                    },
+                ],
+            },
+        }
+    }
+}
+
+# In-transit parcel — ON_THE_ROAD stage
+MOCK_DPD_IN_TRANSIT = {
+    "parcellifecycleResponse": {
+        "parcelLifeCycleData": {
+            "shipmentInfo": {
+                "parcelLabelNumber": "09981100005678",
+                "additionalProperties": [
+                    {
+                        "key": "PARCEL_ID",
+                        "value": "20260318-0000-8000-a009-981100005678",
+                    },
+                ],
+            },
+            "statusInfo": [
+                {
+                    "status": "ACCEPTED",
+                    "label": "Colet predat catre DPD",
+                    "description": {
+                        "content": [
+                            "DPD a receptionat coletul dumneavoastra."
+                        ]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "ON_THE_ROAD",
+                    "label": "In drum",
+                    "description": {
+                        "content": ["Coletul este in tranzit."]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": True,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "AT_DELIVERY_DEPOT",
+                    "label": "La depozitul de livrare",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "OUT_FOR_DELIVERY",
+                    "label": "In curs de livrare",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "DELIVERED",
+                    "label": "Livrat",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+            ],
+            "contactInfo": [],
+            "scanInfo": {
+                "scan": [
+                    {
+                        "date": "2026-03-17T18:00:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "15",
+                                "name": "SC_15_PICKUP",
+                            },
+                            "location": "Cluj-Napoca (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": []
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul a fost ridicat de la expeditor."
+                            ]
+                        },
+                        "links": [],
+                    },
+                    {
+                        "date": "2026-03-18T06:30:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "1",
+                                "name": "SC_1_SORT",
+                            },
+                            "location": "Bucuresti (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": []
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul a fost sortat in depozit."
+                            ]
+                        },
+                        "links": [],
+                    },
+                ],
+            },
+        }
+    }
+}
+
+# Out for delivery parcel
+MOCK_DPD_OUT_FOR_DELIVERY = {
+    "parcellifecycleResponse": {
+        "parcelLifeCycleData": {
+            "shipmentInfo": {
+                "parcelLabelNumber": "09981100009999",
+                "additionalProperties": [],
+            },
+            "statusInfo": [
+                {
+                    "status": "ACCEPTED",
+                    "label": "Colet predat catre DPD",
+                    "description": {"content": ["DPD a receptionat coletul."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "ON_THE_ROAD",
+                    "label": "In drum",
+                    "description": {"content": ["Coletul este in tranzit."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "AT_DELIVERY_DEPOT",
+                    "label": "La depozitul de livrare",
+                    "description": {"content": ["La depozit."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "OUT_FOR_DELIVERY",
+                    "label": "In curs de livrare",
+                    "description": {
+                        "content": [
+                            "Coletul este in curs de livrare."
+                        ]
+                    },
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": True,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "DELIVERED",
+                    "label": "Livrat",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+            ],
+            "contactInfo": [],
+            "scanInfo": {
+                "scan": [
+                    {
+                        "date": "2026-03-18T09:00:00",
+                        "scanData": {
+                            "scanType": {"code": "3", "name": "SC_3_IN_DELIVERY"},
+                            "location": "Timisoara (RO)",
+                            "country": "RO",
+                            "additionalCodes": {"additionalCode": []},
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul este in curs de livrare."
+                            ]
+                        },
+                        "links": [],
+                    },
+                ],
+            },
+        }
+    }
+}
+
+# Parcel shop delivery (scan code 23 = store dropoff)
+MOCK_DPD_PARCEL_SHOP = {
+    "parcellifecycleResponse": {
+        "parcelLifeCycleData": {
+            "shipmentInfo": {
+                "parcelLabelNumber": "09981100007777",
+                "additionalProperties": [],
+            },
+            "statusInfo": [
+                {
+                    "status": "ACCEPTED",
+                    "label": "Colet predat",
+                    "description": {"content": ["Predat."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "ON_THE_ROAD",
+                    "label": "In drum",
+                    "description": {"content": ["In tranzit."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "AT_DELIVERY_DEPOT",
+                    "label": "La depozit",
+                    "description": {"content": ["La depozit."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": True,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "OUT_FOR_DELIVERY",
+                    "label": "In livrare",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "DELIVERED",
+                    "label": "Livrat",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+            ],
+            "contactInfo": [],
+            "scanInfo": {
+                "scan": [
+                    {
+                        "date": "2026-03-18T10:00:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "23",
+                                "name": "SC_23_STORE_DROPOFF",
+                            },
+                            "location": "Bucuresti (RO)",
+                            "country": "RO",
+                            "additionalCodes": {"additionalCode": []},
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul a fost depus la DPD Pickup Shop."
+                            ]
+                        },
+                        "links": [
+                            {
+                                "target": "PARCELSHOP_DETAIL",
+                                "url": "https://tracking.dpd.de/rest/ps/ro_RO/P12345",
+                            }
+                        ],
+                    },
+                ],
+            },
+        }
+    }
+}
+
+# Pre-registered parcel — no stages reached, empty scans
+MOCK_DPD_PREREGISTERED = {
+    "parcellifecycleResponse": {
+        "parcelLifeCycleData": {
+            "shipmentInfo": {
+                "parcelLabelNumber": "09981122334455",
+                "serviceElements": [],
+                "codInformationAvailable": False,
+                "documents": [],
+                "additionalProperties": [
+                    {
+                        "key": "PARCEL_ID",
+                        "value": "20260221-0000-8000-a009-981122334455",
+                    }
+                ],
+            },
+            "statusInfo": [
+                {
+                    "status": "ACCEPTED",
+                    "label": "Colet predat catre DPD",
+                    "description": {
+                        "content": [
+                            "DPD a receptionat coletul dumneavoastra."
+                        ]
+                    },
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "ON_THE_ROAD",
+                    "label": "In drum",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "AT_DELIVERY_DEPOT",
+                    "label": "La depozitul de livrare",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "OUT_FOR_DELIVERY",
+                    "label": "In curs de livrare",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "DELIVERED",
+                    "label": "Livrat",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+            ],
+            "contactInfo": [],
+            "scanInfo": {"scan": []},
+        }
+    }
+}
+
+# Not found — null parcelLifeCycleData
+MOCK_DPD_NOT_FOUND = {
+    "parcellifecycleResponse": {"parcelLifeCycleData": None}
+}
+
+# Parcel shop redirect via not-delivered event (scan code 14, additional 091)
+MOCK_DPD_PARCELSHOP_REDIRECT = {
+    "parcellifecycleResponse": {
+        "parcelLifeCycleData": {
+            "shipmentInfo": {
+                "parcelLabelNumber": "09981100006666",
+                "additionalProperties": [],
+            },
+            "statusInfo": [
+                {
+                    "status": "ACCEPTED",
+                    "label": "Colet predat",
+                    "description": {"content": ["Predat."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "ON_THE_ROAD",
+                    "label": "In drum",
+                    "description": {"content": ["In tranzit."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "AT_DELIVERY_DEPOT",
+                    "label": "La depozit",
+                    "description": {"content": ["La depozit."]},
+                    "statusHasBeenReached": True,
+                    "isCurrentStatus": True,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "OUT_FOR_DELIVERY",
+                    "label": "In livrare",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+                {
+                    "status": "DELIVERED",
+                    "label": "Livrat",
+                    "description": {"content": []},
+                    "statusHasBeenReached": False,
+                    "isCurrentStatus": False,
+                    "normalItems": [],
+                    "importantItems": [],
+                    "errorItems": [],
+                },
+            ],
+            "contactInfo": [],
+            "scanInfo": {
+                "scan": [
+                    {
+                        "date": "2026-03-18T11:00:00",
+                        "scanData": {
+                            "scanType": {
+                                "code": "14",
+                                "name": "SC_14_NOT_DELIVERED",
+                            },
+                            "location": "Brasov (RO)",
+                            "country": "RO",
+                            "additionalCodes": {
+                                "additionalCode": [{"code": "091"}]
+                            },
+                            "serviceElements": [],
+                        },
+                        "scanDescription": {
+                            "content": [
+                                "Coletul a fost redirectionat la parcel shop."
+                            ]
+                        },
+                        "links": [],
+                    },
+                ],
+            },
+        }
+    }
+}
+
+
+# ============================================================
+# DPD Romania tests
+# ============================================================
+
+
+def test_parse_dpd_delivered():
+    """Test parsing a DPD delivered response with full scan history."""
+    api = ColeteAPI()
+    result = api._parse_dpd(MOCK_DPD_DELIVERED, "09981100001234")
+
+    assert result["courier"] == COURIER_DPD
+    assert result["awb"] == "09981100001234"
+    assert result["status"] == STATUS_DELIVERED
+    assert result["status_label"] == "Delivered"
+    assert result["delivered"] is True
+    assert result["delivered_date"] == "2026-01-20T12:23:23"
+    assert result["delivered_to"] == "Ion Popescu"
+    assert result["location"] == "Iasi"  # Extracted from "Iasi (RO)"
+    assert result["last_update"] == "2026-01-20T12:23:23"
+    assert result["weight"] is None  # Not available from DPD
+    assert len(result["events"]) == 5
+    # Verify first event
+    assert result["events"][0]["date"] == "2026-01-18T16:30:00"
+    assert result["events"][0]["location"] == "Bucuresti"
+    assert result["events"][0]["scan_code"] == "15"
+    # Verify last event (delivery)
+    assert result["events"][-1]["scan_code"] == "13"
+    assert result["events"][-1]["location"] == "Iasi"
+    api.close()
+
+
+def test_parse_dpd_in_transit():
+    """Test parsing a DPD in-transit response (ON_THE_ROAD stage)."""
+    api = ColeteAPI()
+    result = api._parse_dpd(MOCK_DPD_IN_TRANSIT, "09981100005678")
+
+    assert result["courier"] == COURIER_DPD
+    assert result["status"] == STATUS_IN_TRANSIT
+    assert result["status_label"] == "In Transit"
+    assert result["delivered"] is False
+    assert result["delivered_date"] is None
+    assert result["delivered_to"] is None
+    assert result["location"] == "Bucuresti"
+    assert result["last_update"] == "2026-03-18T06:30:00"
+    assert len(result["events"]) == 2
+    assert result["status_detail"] == "Coletul este in tranzit."
+    api.close()
+
+
+def test_parse_dpd_out_for_delivery():
+    """Test parsing a DPD out-for-delivery response."""
+    api = ColeteAPI()
+    result = api._parse_dpd(MOCK_DPD_OUT_FOR_DELIVERY, "09981100009999")
+
+    assert result["status"] == STATUS_OUT_FOR_DELIVERY
+    assert result["status_label"] == "Out for Delivery"
+    assert result["delivered"] is False
+    assert result["location"] == "Timisoara"
+    assert len(result["events"]) == 1
+    api.close()
+
+
+def test_parse_dpd_parcel_shop():
+    """Test DPD parcel shop delivery (scan code 23 = store dropoff)."""
+    api = ColeteAPI()
+    result = api._parse_dpd(MOCK_DPD_PARCEL_SHOP, "09981100007777")
+
+    assert result["status"] == STATUS_READY_FOR_PICKUP
+    assert result["status_label"] == "Ready for Pickup"
+    assert result["delivered"] is False
+    assert result["location"] == "Bucuresti"
+    api.close()
+
+
+def test_parse_dpd_parcelshop_redirect():
+    """Test DPD parcel shop redirect via not-delivered event (code 14 + 091)."""
+    api = ColeteAPI()
+    result = api._parse_dpd(MOCK_DPD_PARCELSHOP_REDIRECT, "09981100006666")
+
+    assert result["status"] == STATUS_READY_FOR_PICKUP
+    assert result["status_label"] == "Ready for Pickup"
+    assert result["delivered"] is False
+    assert result["location"] == "Brasov"
+    api.close()
+
+
+def test_parse_dpd_preregistered():
+    """Test DPD pre-registered parcel (no stages reached, no scans)."""
+    api = ColeteAPI()
+    result = api._parse_dpd(MOCK_DPD_PREREGISTERED, "09981122334455")
+
+    # Falls back to ACCEPTED (first stage) since no isCurrentStatus/reached
+    assert result["status"] == STATUS_PICKED_UP
+    assert result["delivered"] is False
+    assert result["delivered_date"] is None
+    assert result["location"] == ""
+    assert result["last_update"] == ""
+    assert result["events"] == []
+    api.close()
+
+
+def test_parse_dpd_not_found():
+    """Test DPD not-found response (null parcelLifeCycleData)."""
+    from custom_components.colete.api import ColeteNotFoundError
+
+    api = ColeteAPI()
+    with pytest.raises(ColeteNotFoundError, match="not found"):
+        api._parse_dpd(MOCK_DPD_NOT_FOUND, "00000000000000")
+    api.close()
+
+
+def test_parse_dpd_location_without_country_code():
+    """Test DPD location parsing when format doesn't match 'City (CC)'."""
+    api = ColeteAPI()
+    # Modify a fixture with a non-standard location format
+    data = {
+        "parcellifecycleResponse": {
+            "parcelLifeCycleData": {
+                "shipmentInfo": {
+                    "parcelLabelNumber": "09981100008888",
+                    "additionalProperties": [],
+                },
+                "statusInfo": [
+                    {
+                        "status": "ON_THE_ROAD",
+                        "label": "In drum",
+                        "description": {"content": ["In tranzit."]},
+                        "statusHasBeenReached": True,
+                        "isCurrentStatus": True,
+                        "normalItems": [],
+                        "importantItems": [],
+                        "errorItems": [],
+                    },
+                ],
+                "contactInfo": [],
+                "scanInfo": {
+                    "scan": [
+                        {
+                            "date": "2026-03-18T10:00:00",
+                            "scanData": {
+                                "scanType": {"code": "1", "name": "SC_1_SORT"},
+                                "location": "Some Depot Location",
+                                "country": "RO",
+                                "additionalCodes": {"additionalCode": []},
+                                "serviceElements": [],
+                            },
+                            "scanDescription": {
+                                "content": ["Sorted."]
+                            },
+                            "links": [],
+                        },
+                    ],
+                },
+            }
+        }
+    }
+    result = api._parse_dpd(data, "09981100008888")
+
+    # Location without "(CC)" format should be kept as-is
+    assert result["location"] == "Some Depot Location"
     api.close()

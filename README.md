@@ -15,6 +15,7 @@ Integrare Home Assistant pentru urmarirea coletelor din Romania. Suporta curieri
 | **FAN Courier** | API publica JSON | Nu necesita | Status, locatie, istoric evenimente |
 | **Cargus** | HTML scraping | Nu necesita | Status, progres %, fara istoric/locatie |
 | **GLS Romania** | API publica JSON | Nu necesita | Status, progres %, fara istoric/locatie |
+| **DPD Romania** | API publica JSON | Nu necesita | Status, locatie, istoric evenimente, destinatar |
 
 ## Functionalitati
 
@@ -25,7 +26,7 @@ Integrare Home Assistant pentru urmarirea coletelor din Romania. Suporta curieri
 - **Livrare** - Starea livrarii (Pending, Ready for Pickup, Delivered)
 
 ### Detectare Lockere/Easybox/Parcel Shop
-- Detecteaza automat cand coletul a fost depozitat intr-un **Easybox** (Sameday), **FANbox** (FAN Courier) sau **GLS Parcel Shop**
+- Detecteaza automat cand coletul a fost depozitat intr-un **Easybox** (Sameday), **FANbox** (FAN Courier), **GLS Parcel Shop** sau **DPD Pickup Shop**
 - Status distinct: **Ready for Pickup** - coletul este la locker/parcel shop, nu a fost livrat definitiv
 - Continua monitorizarea pana la ridicarea coletului
 
@@ -107,7 +108,7 @@ Dupa configurare, pentru fiecare colet vei avea 4 senzori:
 | Picked Up | Coletul a fost preluat de curier |
 | In Transit | In tranzit |
 | Out for Delivery | In curs de livrare |
-| Ready for Pickup | Disponibil la locker (Easybox/FANbox/GLS Parcel Shop) |
+| Ready for Pickup | Disponibil la locker (Easybox/FANbox/GLS Parcel Shop/DPD Pickup Shop) |
 | Delivered | Livrat |
 | Returned | Returnat expeditorului |
 | Canceled | Anulat |
@@ -156,7 +157,7 @@ Adauga un colet nou programatic, util pentru automatizari:
 action: colete.track_parcel
 data:
   awb: "987654321"
-  courier: "auto"  # sau "sameday", "fan_courier", "cargus", "gls"
+  courier: "auto"  # sau "sameday", "fan_courier", "cargus", "gls", "dpd"
   friendly_name: "Laptop nou"
 ```
 
@@ -243,6 +244,8 @@ entities:
     name: Haine (Cargus)
   - entity: sensor.colete_gls_6234776771_status
     name: Casti (GLS)
+  - entity: sensor.colete_dpd_09981100001234_status
+    name: Pantofi (DPD)
 ```
 
 ## Despre Date
@@ -253,6 +256,7 @@ entities:
 - **FAN Courier**: `https://www.fancourier.ro/limit-tracking.php` - API publica JSON
 - **Cargus**: `https://www.cargus.ro/personal/urmareste-coletul/?tracking_number={AWB}` - HTML scraping (nu exista API publica JSON)
 - **GLS Romania**: `https://gls-group.eu/app/service/open/rest/RO/ro/rstt029` - API publica JSON
+- **DPD Romania**: `https://tracking.dpd.de/rest/plc/ro_RO/{AWB}` - API publica JSON (via DPD Germany tracking)
 
 ### Frecventa Actualizare
 
@@ -265,8 +269,9 @@ entities:
 - **Cargus**: Nu are API publica JSON; datele sunt extrase prin HTML scraping, ceea ce poate fi fragil la schimbari de design. Nu expune istoric evenimente sau locatie.
 - **GLS Romania**: API-ul nu returneaza istoric evenimente, locatie sau greutate. Doar status curent si progres.
 - **FAN Courier** poate returna eroare 429 (rate limit) daca sunt prea multe cereri
+- **DPD Romania** poate returna eroare 429 (rate limit); API-ul este gazduit de DPD Germania si nu necesita autentificare
 - Coletele foarte vechi pot fi sterse din sistemele curierilor si nu vor mai returna date
-- Curieri nesuportati: DPD Romania (403 la boti), Posta Romana (CAPTCHA Cloudflare)
+- Curieri nesuportati: Posta Romana (CAPTCHA Cloudflare)
 
 ## Troubleshooting
 
@@ -341,5 +346,5 @@ If you find this project useful, consider buying me a coffee!
 
 ---
 
-*Aceasta integrare nu este afiliata oficial cu Sameday, FAN Courier, Cargus sau GLS.*
+*Aceasta integrare nu este afiliata oficial cu Sameday, FAN Courier, Cargus, GLS sau DPD.*
 *Datele sunt furnizate prin API-uri publice ale curierilor.*
