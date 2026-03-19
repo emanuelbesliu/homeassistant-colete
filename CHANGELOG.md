@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.4.0...v1.5.0) (2026-03-19)
+
+
+### Features
+
+* add DPD Romania courier support ([0835ad0](https://github.com/emanuelbesliu/homeassistant-colete/commit/0835ad01fa7f85c563de9fcdb9a2ba7ea4e0375f))
+
 ## [1.4.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.3.0...v1.4.0) (2026-03-18)
 
 
