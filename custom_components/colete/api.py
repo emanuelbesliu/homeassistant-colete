@@ -776,11 +776,17 @@ class ColeteAPI:
         API: GET https://tracking.dpd.de/rest/plc/ro_RO/{AWB}
         No authentication required. Returns JSON with parcellifecycleResponse.
         Uses ro_RO locale for Romanian status labels.
+
+        AWB must be zero-padded to 14 digits — shorter AWBs get 302 redirected
+        to the tracking web UI instead of returning JSON.
         """
-        url = DPD_API_URL.format(awb=awb)
+        padded_awb = awb.zfill(14)
+        url = DPD_API_URL.format(awb=padded_awb)
 
         try:
-            response = self._session.get(url, timeout=REQUEST_TIMEOUT)
+            response = self._session.get(
+                url, timeout=REQUEST_TIMEOUT, allow_redirects=False
+            )
         except requests.exceptions.Timeout as err:
             raise ColeteApiError(
                 f"Timeout connecting to DPD API: {err}"
@@ -791,6 +797,12 @@ class ColeteAPI:
             ) from err
         except requests.exceptions.RequestException as err:
             raise ColeteApiError(f"Error fetching DPD data: {err}") from err
+
+        if response.status_code in (301, 302):
+            raise ColeteApiError(
+                f"DPD API redirected (HTTP {response.status_code}), "
+                f"AWB format may be invalid: {awb}"
+            )
 
         if response.status_code == 429:
             raise ColeteApiError("DPD API rate limit exceeded")

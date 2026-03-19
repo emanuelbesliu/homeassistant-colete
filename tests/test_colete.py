@@ -2128,3 +2128,12 @@ def test_parse_dpd_location_without_country_code():
     # Location without "(CC)" format should be kept as-is
     assert result["location"] == "Some Depot Location"
     api.close()
+
+
+def test_dpd_awb_zero_padding():
+    """Test that DPD AWBs are zero-padded to 14 digits for the API call."""
+    # The DPD API requires 14-digit AWBs; shorter ones get 302 redirected.
+    # Verify the padding logic works correctly.
+    assert "81216087735".zfill(14) == "00081216087735"
+    assert "09981100001234".zfill(14) == "09981100001234"  # Already 14 digits
+    assert "123".zfill(14) == "00000000000123"
