@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.5.0...v1.5.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* zero-pad DPD AWB to 14 digits to prevent API redirect ([aac9c1a](https://github.com/emanuelbesliu/homeassistant-colete/commit/aac9c1a520f1224f860f900b401a96401da04ff5))
+
 ## [1.5.0](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.4.0...v1.5.0) (2026-03-19)
 
 
