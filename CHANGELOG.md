@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.4] (2026-03-20)
+
+
+### Bug Fixes
+
+* fix Scanner Status sensor showing "Unknown" after HA restart — persist full coordinator data dict in storage and restore it on startup so all IMAP sensors retain their pre-restart values
+* always save state after every successful scan (not only when new UIDs or AWBs appear) so persisted data stays current
+
+### Enhancements
+
+* AWBs Found sensor now exposes all discovered AWBs as extra state attributes (tracked_awbs, invalid_awbs, dismissed_awbs) grouped by status
+
 ## [1.6.3] (2026-03-20)
 
 

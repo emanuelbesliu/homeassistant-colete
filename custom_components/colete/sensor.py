@@ -279,5 +279,26 @@ class ColeteImapSensor(CoordinatorEntity[ImapDataUpdateCoordinator], SensorEntit
 
         elif self._sensor_type == SENSOR_TYPE_IMAP_AWBS_FOUND:
             attrs["total_awbs_found"] = data.get("total_awbs_found", 0)
+            # Include all discovered AWBs grouped by status
+            seen_awbs = data.get("seen_awbs", {})
+            if seen_awbs:
+                tracked = [
+                    awb for awb, info in seen_awbs.items()
+                    if info.get("status") == "tracked"
+                ]
+                invalid = [
+                    awb for awb, info in seen_awbs.items()
+                    if info.get("status") == "invalid"
+                ]
+                dismissed = [
+                    awb for awb, info in seen_awbs.items()
+                    if info.get("status") == "dismissed"
+                ]
+                if tracked:
+                    attrs["tracked_awbs"] = tracked
+                if invalid:
+                    attrs["invalid_awbs"] = invalid
+                if dismissed:
+                    attrs["dismissed_awbs"] = dismissed
 
         return attrs

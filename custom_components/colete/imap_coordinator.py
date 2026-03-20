@@ -86,15 +86,18 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._total_awbs_found: int = 0
         self._last_scan_time: str | None = None
         self._last_error: str | None = None
+        # Last coordinator data dict (persisted so sensors survive restarts)
+        self._last_data: dict[str, Any] | None = None
 
     async def async_load_seen_awbs(self) -> None:
-        """Load previously seen AWBs from persistent storage."""
+        """Load previously seen AWBs and last coordinator data from persistent storage."""
         data = await self._store.async_load()
         if data and isinstance(data, dict):
             self._seen_awbs = data.get("seen_awbs", {})
             self._processed_uids = set(data.get("processed_uids", []))
             self._total_awbs_found = data.get("total_awbs_found", 0)
             self._last_scan_time = data.get("last_scan_time")
+            self._last_data = data.get("last_data")
             _LOGGER.debug(
                 "Loaded %d seen AWBs, %d processed UIDs from storage",
                 len(self._seen_awbs),
@@ -102,13 +105,14 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     async def _async_save(self) -> None:
-        """Save seen AWBs to persistent storage."""
+        """Save seen AWBs and last coordinator data to persistent storage."""
         await self._store.async_save(
             {
                 "seen_awbs": self._seen_awbs,
                 "processed_uids": list(self._processed_uids),
                 "total_awbs_found": self._total_awbs_found,
                 "last_scan_time": self._last_scan_time,
+                "last_data": self._last_data,
             }
         )
 
@@ -272,18 +276,10 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             # status == "pending": do NOT add to _seen_awbs — retry next scan
 
-        # Persist state (save if we processed any new UIDs or found new AWBs)
-        if scan_result.scanned_uids or new_awbs:
-            await self._async_save()
-
-        if newly_tracked > 0:
-            _LOGGER.info(
-                "IMAP scan complete: %d new AWBs tracked out of %d candidates",
-                newly_tracked,
-                len(new_awbs),
-            )
-
-        return {
+        # Persist state after every successful scan (not just when new data
+        # appears) so that _last_data always reflects the latest scan result.
+        # This ensures sensors survive restarts with up-to-date values.
+        result_data: dict[str, Any] = {
             "status": "idle",
             "last_scan": self._last_scan_time,
             "emails_scanned": scan_result.emails_scanned,
@@ -292,4 +288,16 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "total_awbs_found": self._total_awbs_found,
             "last_error": self._last_error,
             "email": self._email,
+            "seen_awbs": self._seen_awbs,
         }
+        self._last_data = result_data
+        await self._async_save()
+
+        if newly_tracked > 0:
+            _LOGGER.info(
+                "IMAP scan complete: %d new AWBs tracked out of %d candidates",
+                newly_tracked,
+                len(new_awbs),
+            )
+
+        return result_data

@@ -80,8 +80,14 @@ async def _async_setup_imap_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
     # each AWB against courier APIs) synchronously during HA startup.
     # Instead, provide initial data for sensors and schedule the first scan
     # to run after HA has finished starting up.
-    coordinator.async_set_updated_data(
-        {
+    #
+    # If we have persisted data from a previous scan, use it so that all
+    # sensors (Status, Last Scan, AWBs Found) show their pre-restart values
+    # immediately instead of "Unknown".
+    initial_data = coordinator._last_data
+    if initial_data is None:
+        # First-ever setup — no previous scan data exists yet
+        initial_data = {
             "status": "waiting",
             "last_scan": coordinator._last_scan_time,
             "emails_scanned": 0,
@@ -90,8 +96,9 @@ async def _async_setup_imap_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
             "total_awbs_found": coordinator._total_awbs_found,
             "last_error": None,
             "email": entry.data.get(CONF_IMAP_EMAIL, ""),
+            "seen_awbs": {},
         }
-    )
+    coordinator.async_set_updated_data(initial_data)
 
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
