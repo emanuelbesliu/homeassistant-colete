@@ -190,9 +190,10 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._last_error = scan_result.errors[0]
                 raise UpdateFailed(f"IMAP scan failed: {scan_result.errors[0]}")
 
-        # Track UIDs we've now processed
-        for extracted in scan_result.awbs:
-            self._processed_uids.add(extracted.email_uid)
+        # Track ALL scanned UIDs (not just AWB-containing ones)
+        # This prevents re-downloading non-AWB emails on the next scan cycle
+        for uid in scan_result.scanned_uids:
+            self._processed_uids.add(uid)
 
         # Filter out AWBs we've already seen or are already tracked
         currently_tracked = self._get_currently_tracked_awbs()
@@ -222,8 +223,8 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 newly_tracked += 1
                 self._total_awbs_found += 1
 
-        # Persist state
-        if new_awbs:
+        # Persist state (save if we processed any new UIDs or found new AWBs)
+        if scan_result.scanned_uids or new_awbs:
             await self._async_save()
 
         if newly_tracked > 0:

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.1] (2026-03-20)
+
+
+### Bug Fixes
+
+* fix IMAP scanner performance: track ALL scanned UIDs (not just AWB-containing ones) to avoid re-downloading non-AWB emails on every scan cycle
+* remove two-pass subject keyword filter that could miss AWBs in emails with generic subjects
+* use BODY.PEEK[] instead of RFC822 to avoid setting \Seen flag on emails
+
 ## [1.6.0] (2026-03-20)
 
 

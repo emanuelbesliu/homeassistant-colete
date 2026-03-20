@@ -3,6 +3,13 @@
 Connects to an IMAP mailbox, searches for shipping notification emails,
 and extracts AWB/tracking numbers using keyword-based regex patterns.
 All methods are synchronous (designed to be wrapped in async_add_executor_job).
+
+Performance optimizations:
+  - Skip already-seen UIDs before any IMAP fetch (coordinator passes seen set).
+  - Use BODY.PEEK[] to avoid setting the \\Seen flag on emails.
+  - Track ALL scanned UIDs (not just AWB-containing ones) so non-AWB emails
+    are never re-downloaded on subsequent scans.
+  - Socket timeout (30s) prevents indefinite hangs on slow servers.
 """
 
 from __future__ import annotations
@@ -13,17 +20,24 @@ import email.utils
 import imaplib
 import logging
 import re
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from typing import Any
 
-from .const import AWB_KEYWORD_PATTERNS, COURIER_SENDER_HINTS
+from .const import (
+    AWB_KEYWORD_PATTERNS,
+    COURIER_SENDER_HINTS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 # Pre-compile AWB regex patterns
 _COMPILED_AWB_PATTERNS = [re.compile(p) for p in AWB_KEYWORD_PATTERNS]
+
+# Socket timeout for IMAP connections (seconds)
+_IMAP_TIMEOUT = 30
 
 
 class _HtmlTextExtractor(HTMLParser):
@@ -80,6 +94,7 @@ class ScanResult:
     awbs: list[ExtractedAwb] = field(default_factory=list)
     emails_scanned: int = 0
     errors: list[str] = field(default_factory=list)
+    scanned_uids: list[str] = field(default_factory=list)
 
 
 class ImapAwbScanner:
@@ -108,7 +123,16 @@ class ImapAwbScanner:
     def connect(self) -> None:
         """Connect and authenticate to the IMAP server."""
         _LOGGER.debug("Connecting to IMAP server %s:%s", self._server, self._port)
-        self._conn = imaplib.IMAP4_SSL(self._server, self._port)
+        # Set a socket timeout to avoid indefinite hangs
+        old_timeout = socket.getdefaulttimeout()
+        try:
+            socket.setdefaulttimeout(_IMAP_TIMEOUT)
+            self._conn = imaplib.IMAP4_SSL(self._server, self._port)
+        finally:
+            socket.setdefaulttimeout(old_timeout)
+        # Also set timeout on the socket directly
+        if self._conn and self._conn.socket():
+            self._conn.socket().settimeout(_IMAP_TIMEOUT)
         self._conn.login(self._email, self._password)
         _LOGGER.debug("IMAP login successful for %s", self._email)
 
@@ -146,11 +170,17 @@ class ImapAwbScanner:
     def scan(self, seen_uids: set[str] | None = None) -> ScanResult:
         """Scan the mailbox for emails containing AWB numbers.
 
+        Single-pass: fetches the full email via BODY.PEEK[] for every new
+        (not yet seen) email in the lookback window, extracts AWBs from
+        subject + body text. ALL scanned UIDs are returned in the result
+        so the coordinator can mark them as processed and skip them on the
+        next scan cycle.
+
         Args:
-            seen_uids: Set of IMAP UIDs already processed (skip these).
+            seen_uids: Set of IMAP UIDs already processed (skip these entirely).
 
         Returns:
-            ScanResult with extracted AWBs and scan metadata.
+            ScanResult with extracted AWBs, scan metadata, and all scanned UIDs.
         """
         result = ScanResult()
         if seen_uids is None:
@@ -181,23 +211,38 @@ class ImapAwbScanner:
                 _LOGGER.debug("No emails found matching criteria")
                 return result
 
-            uids = msg_nums[0].split()
-            _LOGGER.debug("Found %d emails to scan", len(uids))
+            all_uids = msg_nums[0].split()
+            # Filter out already-processed UIDs immediately (before any fetch)
+            new_uids = [
+                u for u in all_uids
+                if u.decode("utf-8", errors="replace") not in seen_uids
+            ]
 
-            for uid_bytes in uids:
-                uid = uid_bytes.decode("utf-8", errors="replace")
+            _LOGGER.debug(
+                "Found %d emails total, %d new (skipped %d already processed)",
+                len(all_uids),
+                len(new_uids),
+                len(all_uids) - len(new_uids),
+            )
 
-                # Skip already-processed emails
-                if uid in seen_uids:
-                    continue
+            if not new_uids:
+                return result
 
+            # Fetch full emails using BODY.PEEK[] (avoids setting \Seen flag)
+            for uid_bytes in new_uids:
+                uid_str = uid_bytes.decode("utf-8", errors="replace")
                 try:
-                    awbs = self._process_email(uid)
-                    result.emails_scanned += 1
+                    awbs = self._fetch_and_extract(uid_bytes)
                     result.awbs.extend(awbs)
+                    result.emails_scanned += 1
+                    result.scanned_uids.append(uid_str)
                 except Exception as err:  # noqa: BLE001
-                    _LOGGER.debug("Error processing email UID %s: %s", uid, err)
-                    result.errors.append(f"UID {uid}: {err}")
+                    _LOGGER.debug(
+                        "Error processing email UID %s: %s", uid_str, err
+                    )
+                    result.errors.append(f"UID {uid_str}: {err}")
+                    # Still mark as scanned so we don't retry on next cycle
+                    result.scanned_uids.append(uid_str)
 
             _LOGGER.debug(
                 "Scan complete: %d emails scanned, %d AWBs found",
@@ -205,7 +250,7 @@ class ImapAwbScanner:
                 len(result.awbs),
             )
 
-        except imaplib.IMAP4.error as err:
+        except (imaplib.IMAP4.error, socket.timeout, OSError) as err:
             error_msg = f"IMAP error: {err}"
             _LOGGER.error(error_msg)
             result.errors.append(error_msg)
@@ -218,39 +263,48 @@ class ImapAwbScanner:
 
         return result
 
-    def _process_email(self, uid: str) -> list[ExtractedAwb]:
-        """Fetch and parse a single email, extracting any AWB numbers."""
+    def _fetch_and_extract(self, uid_bytes: bytes) -> list[ExtractedAwb]:
+        """Fetch a single email by UID and extract AWBs from it.
+
+        Uses BODY.PEEK[] to download the full message without setting \\Seen.
+        """
         assert self._conn is not None
 
-        status, msg_data = self._conn.uid("fetch", uid, "(RFC822)")
+        status, msg_data = self._conn.uid(
+            "fetch", uid_bytes, "(BODY.PEEK[])"
+        )
         if status != "OK" or not msg_data or not msg_data[0]:
             return []
 
         raw_email = msg_data[0]
         if isinstance(raw_email, tuple):
-            raw_bytes = raw_email[1]
+            email_bytes = raw_email[1]
         else:
             return []
 
-        msg = email.message_from_bytes(raw_bytes)
+        # Parse the full email message
+        msg = email.message_from_bytes(email_bytes)
+        uid_str = uid_bytes.decode("utf-8", errors="replace")
 
-        # Extract metadata
+        # Extract headers
         subject = self._decode_header(msg.get("Subject", ""))
         sender = self._decode_header(msg.get("From", ""))
         date_str = msg.get("Date", "")
+        sender_email_addr = email.utils.parseaddr(sender)[1].lower()
+        sender_domain = (
+            sender_email_addr.split("@")[1]
+            if "@" in sender_email_addr
+            else ""
+        )
 
-        # Get sender domain for courier hint
-        sender_email = email.utils.parseaddr(sender)[1].lower()
-        sender_domain = sender_email.split("@")[1] if "@" in sender_email else ""
-        courier_hint = COURIER_SENDER_HINTS.get(sender_domain, "auto")
-
-        # Extract email body text
+        # Extract body text
         body_text = self._get_body_text(msg)
 
-        # Also check subject line for AWBs
-        full_text = f"{subject}\n{body_text}"
+        # Determine courier hint from sender domain
+        courier_hint = COURIER_SENDER_HINTS.get(sender_domain, "auto")
 
-        # Extract AWB numbers
+        # Search subject + body for AWBs
+        full_text = f"{subject}\n{body_text}"
         awb_numbers = self._extract_awbs(full_text)
 
         results = []
@@ -260,16 +314,16 @@ class ImapAwbScanner:
                     awb=awb,
                     courier_hint=courier_hint,
                     subject=subject[:200],  # Truncate long subjects
-                    sender=sender_email,
+                    sender=sender_email_addr,
                     date=date_str,
-                    email_uid=uid,
+                    email_uid=uid_str,
                 )
             )
 
         if results:
             _LOGGER.debug(
                 "Email UID %s (%s): found AWBs %s",
-                uid,
+                uid_str,
                 subject[:60],
                 [r.awb for r in results],
             )
