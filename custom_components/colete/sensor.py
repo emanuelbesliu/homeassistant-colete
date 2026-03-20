@@ -13,22 +13,39 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    DOMAIN,
     CONF_AWB,
     CONF_COURIER,
+    CONF_ENTRY_TYPE,
     CONF_FRIENDLY_NAME,
+    CONF_IMAP_EMAIL,
+    CONF_IMAP_SERVER,
     COURIERS,
-    SENSOR_TYPES,
-    SENSOR_TYPE_STATUS,
-    SENSOR_TYPE_LOCATION,
-    SENSOR_TYPE_LAST_UPDATE,
+    DOMAIN,
+    ENTRY_TYPE_IMAP,
+    IMAP_SENSOR_TYPES,
     SENSOR_TYPE_DELIVERY,
+    SENSOR_TYPE_IMAP_AWBS_FOUND,
+    SENSOR_TYPE_IMAP_LAST_SCAN,
+    SENSOR_TYPE_IMAP_STATUS,
+    SENSOR_TYPE_LAST_UPDATE,
+    SENSOR_TYPE_LOCATION,
+    SENSOR_TYPE_STATUS,
+    SENSOR_TYPES,
     STATUS_LABELS,
     STATUS_READY_FOR_PICKUP,
 )
 from .coordinator import ColeteDataUpdateCoordinator
+from .imap_coordinator import ImapDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_imap_entry(entry: ConfigEntry) -> bool:
+    """Check if a config entry is an IMAP scanner entry."""
+    return (
+        entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_IMAP
+        or CONF_IMAP_SERVER in entry.data
+    )
 
 
 async def async_setup_entry(
@@ -36,21 +53,35 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Colete parcel tracking sensors from a config entry."""
+    """Set up sensors from a config entry (parcel or IMAP)."""
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
-    entities = []
-    for sensor_type, sensor_config in SENSOR_TYPES.items():
-        entities.append(
-            ColeteSensor(
-                coordinator=coordinator,
-                entry=entry,
-                sensor_type=sensor_type,
-                sensor_config=sensor_config,
+    if _is_imap_entry(entry):
+        # IMAP scanner sensors
+        entities = []
+        for sensor_type, sensor_config in IMAP_SENSOR_TYPES.items():
+            entities.append(
+                ColeteImapSensor(
+                    coordinator=coordinator,
+                    entry=entry,
+                    sensor_type=sensor_type,
+                    sensor_config=sensor_config,
+                )
             )
-        )
-
-    async_add_entities(entities)
+        async_add_entities(entities)
+    else:
+        # Parcel tracking sensors
+        entities = []
+        for sensor_type, sensor_config in SENSOR_TYPES.items():
+            entities.append(
+                ColeteSensor(
+                    coordinator=coordinator,
+                    entry=entry,
+                    sensor_type=sensor_type,
+                    sensor_config=sensor_config,
+                )
+            )
+        async_add_entities(entities)
 
 
 class ColeteSensor(CoordinatorEntity[ColeteDataUpdateCoordinator], SensorEntity):
@@ -169,5 +200,84 @@ class ColeteSensor(CoordinatorEntity[ColeteDataUpdateCoordinator], SensorEntity)
             delivered_date = data.get("delivered_date")
             if delivered_date:
                 attrs["delivered_date"] = delivered_date
+
+        return attrs
+
+
+class ColeteImapSensor(CoordinatorEntity[ImapDataUpdateCoordinator], SensorEntity):
+    """Representation of an IMAP email scanner sensor."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: ImapDataUpdateCoordinator,
+        entry: ConfigEntry,
+        sensor_type: str,
+        sensor_config: dict[str, Any],
+    ) -> None:
+        """Initialize the IMAP sensor."""
+        super().__init__(coordinator)
+        self._sensor_type = sensor_type
+        self._sensor_config = sensor_config
+        self._entry = entry
+        self._email = entry.data[CONF_IMAP_EMAIL]
+
+        self._attr_unique_id = f"{entry.entry_id}_{sensor_type}"
+        self._attr_name = sensor_config["name"]
+        self._attr_icon = sensor_config["icon"]
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device info for the email scanner."""
+        return {
+            "identifiers": {(DOMAIN, f"imap_{self._email}")},
+            "name": f"Email Scanner ({self._email})",
+            "manufacturer": "Colete",
+            "model": "IMAP Email Scanner",
+            "entry_type": "service",
+        }
+
+    @property
+    def native_value(self) -> str | int | None:
+        """Return the sensor value."""
+        if self.coordinator.data is None:
+            return None
+
+        data = self.coordinator.data
+
+        if self._sensor_type == SENSOR_TYPE_IMAP_STATUS:
+            if data.get("last_error"):
+                return "error"
+            return data.get("status", "idle")
+
+        elif self._sensor_type == SENSOR_TYPE_IMAP_LAST_SCAN:
+            return data.get("last_scan")
+
+        elif self._sensor_type == SENSOR_TYPE_IMAP_AWBS_FOUND:
+            return data.get("total_awbs_found", 0)
+
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs = {"email": self._email}
+
+        if self.coordinator.data is None:
+            return attrs
+
+        data = self.coordinator.data
+
+        if self._sensor_type == SENSOR_TYPE_IMAP_STATUS:
+            attrs["emails_scanned"] = data.get("emails_scanned", 0)
+            attrs["awbs_found_this_scan"] = data.get("awbs_found_this_scan", 0)
+            attrs["new_awbs_tracked"] = data.get("new_awbs_tracked", 0)
+            last_error = data.get("last_error")
+            if last_error:
+                attrs["last_error"] = last_error
+
+        elif self._sensor_type == SENSOR_TYPE_IMAP_AWBS_FOUND:
+            attrs["total_awbs_found"] = data.get("total_awbs_found", 0)
 
         return attrs

@@ -2,6 +2,14 @@
   "config": {
     "step": {
       "user": {
+        "title": "Colete - Setup",
+        "description": "What would you like to set up?",
+        "menu_options": {
+          "track_parcel": "Track a Parcel",
+          "imap_scanner": "Set up Email Scanner (IMAP)"
+        }
+      },
+      "track_parcel": {
         "title": "Colete - Track a Parcel",
         "description": "Add a parcel to track. Enter the AWB number and optionally select the courier. If unsure, use Auto-detect.",
         "data": {
@@ -18,11 +26,35 @@
           "update_interval": "How often to check for updates (300-3600 seconds, default 900)",
           "retention_days": "Days to keep the parcel after delivery (0 = keep forever, default 30)"
         }
+      },
+      "imap_scanner": {
+        "title": "Colete - Email Scanner (IMAP)",
+        "description": "Connect to your email inbox to automatically detect and track parcels from shipping notification emails.",
+        "data": {
+          "imap_server": "IMAP Server",
+          "imap_port": "IMAP Port",
+          "imap_email": "Email Address",
+          "imap_password": "Password / App Password",
+          "imap_folder": "Mail Folder",
+          "imap_lookback_days": "Lookback days",
+          "imap_scan_interval": "Scan interval (seconds)"
+        },
+        "data_description": {
+          "imap_server": "IMAP server hostname (e.g. imap.gmail.com, imap.mail.yahoo.com)",
+          "imap_port": "IMAP SSL port (default 993)",
+          "imap_email": "Your email address used to log in",
+          "imap_password": "Your email password or app-specific password (Gmail requires an App Password)",
+          "imap_folder": "Mail folder to scan (default INBOX)",
+          "imap_lookback_days": "How many days back to scan for shipping emails (1-90, default 7)",
+          "imap_scan_interval": "How often to scan for new emails (60-3600 seconds, default 300)"
+        }
       }
     },
     "error": {
       "awb_not_found": "AWB not found. Please check the number and try again.",
-      "cannot_connect": "Cannot connect to the courier API. Please try again later."
+      "cannot_connect": "Cannot connect to the courier API. Please try again later.",
+      "imap_cannot_connect": "Cannot connect to the IMAP server. Please check server, port, email, and password.",
+      "imap_invalid_folder": "IMAP folder not found. Please check the folder name."
     },
     "abort": {
       "already_configured": "This AWB is already being tracked.",
@@ -36,12 +68,18 @@
         "data": {
           "friendly_name": "Friendly name",
           "update_interval": "Update interval (seconds)",
-          "retention_days": "Retention after delivery (days)"
+          "retention_days": "Retention after delivery (days)",
+          "imap_folder": "Mail Folder",
+          "imap_lookback_days": "Lookback days",
+          "imap_scan_interval": "Scan interval (seconds)"
         },
         "data_description": {
           "friendly_name": "A custom name for this parcel",
           "update_interval": "How often to check for updates (300-3600 seconds)",
-          "retention_days": "Days to keep the parcel after delivery (0 = keep forever)"
+          "retention_days": "Days to keep the parcel after delivery (0 = keep forever)",
+          "imap_folder": "Mail folder to scan (default INBOX)",
+          "imap_lookback_days": "How many days back to scan for shipping emails (1-90)",
+          "imap_scan_interval": "How often to scan for new emails (60-3600 seconds)"
         }
       }
     }

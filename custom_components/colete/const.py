@@ -3,7 +3,14 @@
 DOMAIN = "colete"
 PLATFORMS = ["sensor"]
 
-# Configuration keys
+# ── Entry type discriminator ──────────────────────────────────────────────────
+# Existing parcel entries don't have this key (implicitly "parcel").
+# IMAP scanner entries store CONF_ENTRY_TYPE = ENTRY_TYPE_IMAP.
+CONF_ENTRY_TYPE = "entry_type"
+ENTRY_TYPE_PARCEL = "parcel"
+ENTRY_TYPE_IMAP = "imap"
+
+# ── Parcel configuration keys ────────────────────────────────────────────────
 CONF_COURIER = "courier"
 CONF_AWB = "awb"
 CONF_FRIENDLY_NAME = "friendly_name"
@@ -19,6 +26,86 @@ MAX_UPDATE_INTERVAL = 3600  # 1 hour
 DEFAULT_RETENTION_DAYS = 30
 MIN_RETENTION_DAYS = 0
 MAX_RETENTION_DAYS = 365
+
+# ── IMAP configuration keys ─────────────────────────────────────────────────
+CONF_IMAP_SERVER = "imap_server"
+CONF_IMAP_PORT = "imap_port"
+CONF_IMAP_EMAIL = "imap_email"
+CONF_IMAP_PASSWORD = "imap_password"
+CONF_IMAP_FOLDER = "imap_folder"
+CONF_IMAP_LOOKBACK_DAYS = "imap_lookback_days"
+CONF_IMAP_SCAN_INTERVAL = "imap_scan_interval"
+
+# IMAP defaults
+DEFAULT_IMAP_PORT = 993
+DEFAULT_IMAP_FOLDER = "INBOX"
+DEFAULT_IMAP_LOOKBACK_DAYS = 7
+MIN_IMAP_LOOKBACK_DAYS = 1
+MAX_IMAP_LOOKBACK_DAYS = 90
+DEFAULT_IMAP_SCAN_INTERVAL = 300  # 5 minutes
+MIN_IMAP_SCAN_INTERVAL = 60  # 1 minute
+MAX_IMAP_SCAN_INTERVAL = 3600  # 1 hour
+
+# IMAP persistent storage (for dedup — remember AWBs we already processed)
+IMAP_STORAGE_KEY = "colete_imap_seen_awbs"
+IMAP_STORAGE_VERSION = 1
+
+# ── AWB extraction patterns ──────────────────────────────────────────────────
+# Primary strategy: look for numeric sequences near Romanian shipping keywords.
+# These patterns work regardless of sender (shop emails, courier emails, etc.).
+#
+# AWB_KEYWORD_PATTERNS: compiled against email body text. Each pattern should
+# have a named group "awb" capturing the tracking number.
+# Checked in order; first match wins per region of text.
+AWB_KEYWORD_PATTERNS = [
+    # "AWB: 1234567890" / "AWB 1234567890" / "AWB #1234567890" / "AWB:1234567890"
+    r"(?i)\bAWB[\s:#]*(?P<awb>\d{8,20})\b",
+    # "numar de urmarire: 1234567890" / "numar urmarire 1234567890"
+    r"(?i)\bnuma[a-z]*\s+(?:de\s+)?urmarire[\s:#]*(?P<awb>\d{8,20})\b",
+    # "tracking: 1234567890" / "tracking number: 1234567890"
+    r"(?i)\btracking[\s\w]*[\s:#]*(?P<awb>\d{8,20})\b",
+    # "colet: 1234567890" / "coletul 1234567890"
+    r"(?i)\bcolet(?:ul)?[\s:#]*(?P<awb>\d{8,20})\b",
+    # "expediere: 1234567890" / "expedierea: 1234567890"
+    r"(?i)\bexpediere(?:a)?[\s:#]*(?P<awb>\d{8,20})\b",
+    # "livrare: 1234567890" / "livrarea: 1234567890"
+    r"(?i)\blivrare(?:a)?[\s:#]*(?P<awb>\d{8,20})\b",
+]
+
+# Courier sender domain hints — if the email comes from one of these domains,
+# we can skip auto-detect and go straight to the right courier.
+# This is an optimization only; AWB extraction does NOT depend on sender.
+COURIER_SENDER_HINTS: dict[str, str] = {
+    "sameday.ro": "sameday",
+    "sameday.com": "sameday",
+    "fancourier.ro": "fan_courier",
+    "fan-courier.ro": "fan_courier",
+    "cargus.ro": "cargus",
+    "gls-romania.ro": "gls",
+    "gls-group.eu": "gls",
+    "dpd.ro": "dpd",
+    "dpd.com": "dpd",
+}
+
+# IMAP sensor types
+SENSOR_TYPE_IMAP_STATUS = "imap_status"
+SENSOR_TYPE_IMAP_LAST_SCAN = "imap_last_scan"
+SENSOR_TYPE_IMAP_AWBS_FOUND = "imap_awbs_found"
+
+IMAP_SENSOR_TYPES = {
+    SENSOR_TYPE_IMAP_STATUS: {
+        "name": "Scanner Status",
+        "icon": "mdi:email-search-outline",
+    },
+    SENSOR_TYPE_IMAP_LAST_SCAN: {
+        "name": "Last Scan",
+        "icon": "mdi:clock-outline",
+    },
+    SENSOR_TYPE_IMAP_AWBS_FOUND: {
+        "name": "AWBs Found",
+        "icon": "mdi:package-variant-closed-plus",
+    },
+}
 
 # Supported couriers
 COURIER_AUTO = "auto"

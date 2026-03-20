@@ -2,46 +2,84 @@
   "config": {
     "step": {
       "user": {
-        "title": "Colete - Urmărire Colet",
-        "description": "Adaugă un colet pentru urmărire. Introdu numărul AWB și opțional selectează curierul. Dacă nu ești sigur, folosește Auto-detectare.",
+        "title": "Colete - Configurare",
+        "description": "Ce doresti sa configurezi?",
+        "menu_options": {
+          "track_parcel": "Urmareste un Colet",
+          "imap_scanner": "Configureaza Scanner Email (IMAP)"
+        }
+      },
+      "track_parcel": {
+        "title": "Colete - Urmarire Colet",
+        "description": "Adauga un colet pentru urmarire. Introdu numarul AWB si optional selecteaza curierul. Daca nu esti sigur, foloseste Auto-detectare.",
         "data": {
-          "awb": "Număr AWB",
+          "awb": "Numar AWB",
           "courier": "Curier",
-          "friendly_name": "Nume personalizat (opțional)",
+          "friendly_name": "Nume personalizat (optional)",
           "update_interval": "Interval de actualizare (secunde)",
-          "retention_days": "Retenție după livrare (zile)"
+          "retention_days": "Retentie dupa livrare (zile)"
         },
         "data_description": {
-          "awb": "Numărul de urmărire (AWB) al coletului",
-          "courier": "Selectează curierul sau folosește Auto-detectare pentru a încerca toți curierii suportați",
+          "awb": "Numarul de urmarire (AWB) al coletului",
+          "courier": "Selecteaza curierul sau foloseste Auto-detectare pentru a incerca toti curierii suportati",
           "friendly_name": "Un nume personalizat pentru acest colet (ex. 'Laptop Nou')",
-          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde, implicit 900)",
-          "retention_days": "Zile de păstrare a coletului după livrare (0 = păstrare permanentă, implicit 30)"
+          "update_interval": "Cat de des sa se verifice actualizari (300-3600 secunde, implicit 900)",
+          "retention_days": "Zile de pastrare a coletului dupa livrare (0 = pastrare permanenta, implicit 30)"
+        }
+      },
+      "imap_scanner": {
+        "title": "Colete - Scanner Email (IMAP)",
+        "description": "Conecteaza-te la casuta de email pentru a detecta si urmari automat coletele din emailurile de expediere.",
+        "data": {
+          "imap_server": "Server IMAP",
+          "imap_port": "Port IMAP",
+          "imap_email": "Adresa de Email",
+          "imap_password": "Parola / Parola de Aplicatie",
+          "imap_folder": "Folder Email",
+          "imap_lookback_days": "Zile de scanare inapoi",
+          "imap_scan_interval": "Interval de scanare (secunde)"
+        },
+        "data_description": {
+          "imap_server": "Hostname server IMAP (ex. imap.gmail.com, imap.mail.yahoo.com)",
+          "imap_port": "Port SSL IMAP (implicit 993)",
+          "imap_email": "Adresa ta de email folosita pentru autentificare",
+          "imap_password": "Parola de email sau parola specifica aplicatiei (Gmail necesita o Parola de Aplicatie)",
+          "imap_folder": "Folderul de email de scanat (implicit INBOX)",
+          "imap_lookback_days": "Cate zile inapoi sa se scaneze pentru emailuri de expediere (1-90, implicit 7)",
+          "imap_scan_interval": "Cat de des sa se scaneze pentru emailuri noi (60-3600 secunde, implicit 300)"
         }
       }
     },
     "error": {
-      "awb_not_found": "AWB-ul nu a fost găsit. Verifică numărul și încearcă din nou.",
-      "cannot_connect": "Nu se poate conecta la API-ul curierului. Încearcă din nou mai târziu."
+      "awb_not_found": "AWB-ul nu a fost gasit. Verifica numarul si incearca din nou.",
+      "cannot_connect": "Nu se poate conecta la API-ul curierului. Incearca din nou mai tarziu.",
+      "imap_cannot_connect": "Nu se poate conecta la serverul IMAP. Verifica serverul, portul, emailul si parola.",
+      "imap_invalid_folder": "Folderul IMAP nu a fost gasit. Verifica numele folderului."
     },
     "abort": {
-      "already_configured": "Acest AWB este deja urmărit.",
-      "unknown_error": "A apărut o eroare necunoscută."
+      "already_configured": "Acest AWB este deja urmarit.",
+      "unknown_error": "A aparut o eroare necunoscuta."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Colete - Opțiuni Colet",
+        "title": "Colete - Optiuni Colet",
         "data": {
           "friendly_name": "Nume personalizat",
           "update_interval": "Interval de actualizare (secunde)",
-          "retention_days": "Retenție după livrare (zile)"
+          "retention_days": "Retentie dupa livrare (zile)",
+          "imap_folder": "Folder Email",
+          "imap_lookback_days": "Zile de scanare inapoi",
+          "imap_scan_interval": "Interval de scanare (secunde)"
         },
         "data_description": {
           "friendly_name": "Un nume personalizat pentru acest colet",
-          "update_interval": "Cât de des să se verifice actualizări (300-3600 secunde)",
-          "retention_days": "Zile de păstrare a coletului după livrare (0 = păstrare permanentă)"
+          "update_interval": "Cat de des sa se verifice actualizari (300-3600 secunde)",
+          "retention_days": "Zile de pastrare a coletului dupa livrare (0 = pastrare permanenta)",
+          "imap_folder": "Folderul de email de scanat (implicit INBOX)",
+          "imap_lookback_days": "Cate zile inapoi sa se scaneze pentru emailuri de expediere (1-90)",
+          "imap_scan_interval": "Cat de des sa se scaneze pentru emailuri noi (60-3600 secunde)"
         }
       }
     }

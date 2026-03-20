@@ -11,17 +11,21 @@ from homeassistant.helpers import config_validation as cv
 
 from .api import ColeteAPI, ColeteApiError, ColeteNotFoundError
 from .const import (
-    DOMAIN,
-    PLATFORMS,
-    CONF_COURIER,
     CONF_AWB,
+    CONF_COURIER,
+    CONF_ENTRY_TYPE,
     CONF_FRIENDLY_NAME,
+    CONF_IMAP_SERVER,
     CONF_UPDATE_INTERVAL,
     COURIER_AUTO,
     COURIERS,
     DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+    ENTRY_TYPE_IMAP,
+    PLATFORMS,
 )
 from .coordinator import ColeteDataUpdateCoordinator
+from .imap_coordinator import ImapDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,17 +40,51 @@ SERVICE_TRACK_PARCEL_SCHEMA = vol.Schema(
 )
 
 
+def _is_imap_entry(entry: ConfigEntry) -> bool:
+    """Check if a config entry is an IMAP scanner entry."""
+    return (
+        entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_IMAP
+        or CONF_IMAP_SERVER in entry.data
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Colete parcel tracking from a config entry."""
+    """Set up Colete from a config entry (parcel or IMAP scanner)."""
+    hass.data.setdefault(DOMAIN, {})
+
+    if _is_imap_entry(entry):
+        return await _async_setup_imap_entry(hass, entry)
+    return await _async_setup_parcel_entry(hass, entry)
+
+
+async def _async_setup_imap_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up an IMAP email scanner entry."""
+    coordinator = ImapDataUpdateCoordinator(hass, entry)
+    await coordinator.async_load_seen_awbs()
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data[DOMAIN][entry.entry_id] = {
+        "coordinator": coordinator,
+        "type": "imap",
+    }
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    return True
+
+
+async def _async_setup_parcel_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up a parcel tracking entry."""
     api = ColeteAPI()
 
     coordinator = ColeteDataUpdateCoordinator(hass, api, entry)
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "api": api,
+        "type": "parcel",
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -107,17 +145,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a Colete parcel tracking config entry."""
+    """Unload a Colete config entry (parcel or IMAP)."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
         data = hass.data[DOMAIN].pop(entry.entry_id)
-        api = data["api"]
-        await hass.async_add_executor_job(api.close)
+        # Close the API session for parcel entries
+        api = data.get("api")
+        if api:
+            await hass.async_add_executor_job(api.close)
 
     # Unregister service if no entries remain
     if not hass.data.get(DOMAIN):
-        hass.services.async_remove(DOMAIN, SERVICE_TRACK_PARCEL)
+        if hass.services.has_service(DOMAIN, SERVICE_TRACK_PARCEL):
+            hass.services.async_remove(DOMAIN, SERVICE_TRACK_PARCEL)
 
     return unload_ok
 

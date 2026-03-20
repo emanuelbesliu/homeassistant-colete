@@ -10,23 +10,45 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .api import ColeteAPI, ColeteApiError, ColeteNotFoundError
 from .const import (
-    DOMAIN,
-    CONF_COURIER,
     CONF_AWB,
+    CONF_COURIER,
+    CONF_ENTRY_TYPE,
     CONF_FRIENDLY_NAME,
-    CONF_UPDATE_INTERVAL,
+    CONF_IMAP_EMAIL,
+    CONF_IMAP_FOLDER,
+    CONF_IMAP_LOOKBACK_DAYS,
+    CONF_IMAP_PASSWORD,
+    CONF_IMAP_PORT,
+    CONF_IMAP_SCAN_INTERVAL,
+    CONF_IMAP_SERVER,
     CONF_RETENTION_DAYS,
-    COURIERS,
+    CONF_UPDATE_INTERVAL,
     COURIER_AUTO,
-    DEFAULT_UPDATE_INTERVAL,
-    MIN_UPDATE_INTERVAL,
-    MAX_UPDATE_INTERVAL,
+    COURIERS,
+    DEFAULT_IMAP_FOLDER,
+    DEFAULT_IMAP_LOOKBACK_DAYS,
+    DEFAULT_IMAP_PORT,
+    DEFAULT_IMAP_SCAN_INTERVAL,
     DEFAULT_RETENTION_DAYS,
-    MIN_RETENTION_DAYS,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+    ENTRY_TYPE_IMAP,
+    MAX_IMAP_LOOKBACK_DAYS,
+    MAX_IMAP_SCAN_INTERVAL,
     MAX_RETENTION_DAYS,
+    MAX_UPDATE_INTERVAL,
+    MIN_IMAP_LOOKBACK_DAYS,
+    MIN_IMAP_SCAN_INTERVAL,
+    MIN_RETENTION_DAYS,
+    MIN_UPDATE_INTERVAL,
 )
+from .imap_scanner import ImapAwbScanner, ImapScannerError
 
 _LOGGER = logging.getLogger(__name__)
+
+# Menu choices
+MENU_TRACK_PARCEL = "track_parcel"
+MENU_IMAP_SCANNER = "imap_scanner"
 
 
 class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -37,7 +59,16 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the user step - add a new parcel to track.
+        """Show the initial menu: track a parcel or set up email scanner."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=[MENU_TRACK_PARCEL, MENU_IMAP_SCANNER],
+        )
+
+    async def async_step_track_parcel(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the parcel tracking step - add a new parcel to track.
 
         User provides: courier (or auto-detect), AWB number, optional name.
         We validate the AWB exists, then create the entry.
@@ -116,7 +147,102 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="user",
+            step_id="track_parcel",
+            data_schema=data_schema,
+            errors=errors,
+        )
+
+    async def async_step_imap_scanner(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle IMAP email scanner setup."""
+        errors = {}
+
+        if user_input is not None:
+            imap_server = user_input[CONF_IMAP_SERVER].strip()
+            imap_port = user_input.get(CONF_IMAP_PORT, DEFAULT_IMAP_PORT)
+            imap_email = user_input[CONF_IMAP_EMAIL].strip().lower()
+            imap_password = user_input[CONF_IMAP_PASSWORD]
+            imap_folder = user_input.get(CONF_IMAP_FOLDER, DEFAULT_IMAP_FOLDER).strip()
+
+            # Prevent duplicate IMAP scanner for same email
+            unique_id = f"imap_{imap_email}"
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+
+            # Validate IMAP connection
+            scanner = ImapAwbScanner(
+                server=imap_server,
+                port=imap_port,
+                email_address=imap_email,
+                password=imap_password,
+                folder=imap_folder,
+            )
+            try:
+                valid = await self.hass.async_add_executor_job(
+                    scanner.validate_connection
+                )
+                if not valid:
+                    errors["base"] = "imap_cannot_connect"
+            except ImapScannerError as err:
+                _LOGGER.error("IMAP validation error: %s", err)
+                errors["base"] = "imap_invalid_folder"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.error("IMAP connection error: %s", err)
+                errors["base"] = "imap_cannot_connect"
+
+            if not errors:
+                title = f"Email Scanner ({imap_email})"
+                return self.async_create_entry(
+                    title=title,
+                    data={
+                        CONF_ENTRY_TYPE: ENTRY_TYPE_IMAP,
+                        CONF_IMAP_SERVER: imap_server,
+                        CONF_IMAP_PORT: imap_port,
+                        CONF_IMAP_EMAIL: imap_email,
+                        CONF_IMAP_PASSWORD: imap_password,
+                        CONF_IMAP_FOLDER: imap_folder,
+                        CONF_IMAP_LOOKBACK_DAYS: user_input.get(
+                            CONF_IMAP_LOOKBACK_DAYS, DEFAULT_IMAP_LOOKBACK_DAYS
+                        ),
+                        CONF_IMAP_SCAN_INTERVAL: user_input.get(
+                            CONF_IMAP_SCAN_INTERVAL, DEFAULT_IMAP_SCAN_INTERVAL
+                        ),
+                    },
+                )
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_IMAP_SERVER): str,
+                vol.Optional(CONF_IMAP_PORT, default=DEFAULT_IMAP_PORT): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=65535)
+                ),
+                vol.Required(CONF_IMAP_EMAIL): str,
+                vol.Required(CONF_IMAP_PASSWORD): str,
+                vol.Optional(
+                    CONF_IMAP_FOLDER, default=DEFAULT_IMAP_FOLDER
+                ): str,
+                vol.Optional(
+                    CONF_IMAP_LOOKBACK_DAYS, default=DEFAULT_IMAP_LOOKBACK_DAYS
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=MIN_IMAP_LOOKBACK_DAYS, max=MAX_IMAP_LOOKBACK_DAYS
+                    ),
+                ),
+                vol.Optional(
+                    CONF_IMAP_SCAN_INTERVAL, default=DEFAULT_IMAP_SCAN_INTERVAL
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=MIN_IMAP_SCAN_INTERVAL, max=MAX_IMAP_SCAN_INTERVAL
+                    ),
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="imap_scanner",
             data_schema=data_schema,
             errors=errors,
         )
@@ -161,7 +287,9 @@ class ColeteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
-        """Create the options flow."""
+        """Create the options flow (routes to parcel or IMAP options)."""
+        if config_entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_IMAP:
+            return ColeteImapOptionsFlowHandler()
         return ColeteOptionsFlowHandler()
 
 
@@ -207,6 +335,66 @@ class ColeteOptionsFlowHandler(config_entries.OptionsFlow):
                 ): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_RETENTION_DAYS, max=MAX_RETENTION_DAYS),
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+        )
+
+
+class ColeteImapOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for IMAP email scanner."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage IMAP options - folder, lookback days, scan interval."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_folder = self.config_entry.options.get(
+            CONF_IMAP_FOLDER,
+            self.config_entry.data.get(CONF_IMAP_FOLDER, DEFAULT_IMAP_FOLDER),
+        )
+        current_lookback = self.config_entry.options.get(
+            CONF_IMAP_LOOKBACK_DAYS,
+            self.config_entry.data.get(
+                CONF_IMAP_LOOKBACK_DAYS, DEFAULT_IMAP_LOOKBACK_DAYS
+            ),
+        )
+        current_interval = self.config_entry.options.get(
+            CONF_IMAP_SCAN_INTERVAL,
+            self.config_entry.data.get(
+                CONF_IMAP_SCAN_INTERVAL, DEFAULT_IMAP_SCAN_INTERVAL
+            ),
+        )
+
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_IMAP_FOLDER,
+                    default=current_folder,
+                ): str,
+                vol.Optional(
+                    CONF_IMAP_LOOKBACK_DAYS,
+                    default=current_lookback,
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=MIN_IMAP_LOOKBACK_DAYS, max=MAX_IMAP_LOOKBACK_DAYS
+                    ),
+                ),
+                vol.Optional(
+                    CONF_IMAP_SCAN_INTERVAL,
+                    default=current_interval,
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=MIN_IMAP_SCAN_INTERVAL, max=MAX_IMAP_SCAN_INTERVAL
+                    ),
                 ),
             }
         )

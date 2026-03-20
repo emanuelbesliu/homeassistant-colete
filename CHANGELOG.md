@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0] (2026-03-20)
+
+
+### Features
+
+* add IMAP email scanner for automatic AWB detection from incoming emails
+* keyword-based regex extraction (AWB, tracking, numar de urmarire, colet, expediere, livrare)
+* courier sender domain hints (sameday.ro, fancourier.ro, cargus.ro, gls-romania.ro, dpd.ro)
+* persistent deduplication of seen AWBs across restarts
+* automatic parcel creation via colete.track_parcel service
+* config flow menu: Track a Parcel / Set up Email Scanner
+* IMAP options flow for scan interval, lookback days, folder
+* 3 IMAP sensors: Scanner Status, Last Scan, AWBs Found
+* translations for EN and RO
+
 ## [1.5.1](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.5.0...v1.5.1) (2026-03-19)
 
 

@@ -25,6 +25,15 @@ Integrare Home Assistant pentru urmarirea coletelor din Romania. Suporta curieri
 - **Ultima Actualizare** - Data/ora ultimei actualizari de la curier
 - **Livrare** - Starea livrarii (Pending, Ready for Pickup, Delivered)
 
+### Scanner Email IMAP (NOU)
+- **Scanare automata email** — se conecteaza la casuta de email via IMAP SSL si cauta numere AWB in email-urile primite
+- **Extractie inteligenta** — detecteaza numere AWB pe baza cuvintelor cheie (AWB, tracking, numar de urmarire, colet, expediere, livrare) cu regex generice, nu pe baza expeditorului
+- **Detectare curier din domeniu** — daca email-ul vine de la `@sameday.ro`, `@fancourier.ro`, `@cargus.ro`, `@gls-romania.ro` sau `@dpd.ro`, sugereaza curierul corect (altfel foloseste auto-detect)
+- **Deduplicare persistenta** — AWB-urile deja procesate sunt memorate (chiar si dupa restart HA) si nu sunt procesate din nou
+- **Creare automata colete** — pentru fiecare AWB nou gasit, apeleaza automat serviciul `colete.track_parcel` pentru a crea o intrare de urmarire
+- **3 senzori dedicati**: Scanner Status (connected/scanning/error), Last Scan (timestamp), AWBs Found (total)
+- Suporta **Gmail** (cu App Password), **Outlook**, **Yahoo**, sau orice server IMAP SSL
+
 ### Detectare Lockere/Easybox/Parcel Shop
 - Detecteaza automat cand coletul a fost depozitat intr-un **Easybox** (Sameday), **FANbox** (FAN Courier), **GLS Parcel Shop** sau **DPD Pickup Shop**
 - Status distinct: **Ready for Pickup** - coletul este la locker/parcel shop, nu a fost livrat definitiv
@@ -72,26 +81,58 @@ Reporneste Home Assistant.
 
 ## Configurare
 
-### Pas 1: Adauga un Colet
+La adaugarea integrarii, vei vedea un **meniu** cu doua optiuni:
+- **Track a Parcel** — adauga manual un colet cu numar AWB
+- **Set up Email Scanner** — configureaza scanarea automata a email-urilor pentru AWB-uri
+
+### Optiunea 1: Adauga un Colet
 
 1. In Home Assistant, mergi la **Settings -> Devices & Services**
 2. Click pe **+ Add Integration**
 3. Cauta "**Colete**"
-4. Selecteaza curierul (sau Auto-detect)
-5. Introdu numarul AWB
-6. Optional: seteaza un nume prietenos si intervalul de actualizare
-7. Click **Submit**
+4. Selecteaza **Track a Parcel**
+5. Selecteaza curierul (sau Auto-detect)
+6. Introdu numarul AWB
+7. Optional: seteaza un nume prietenos si intervalul de actualizare
+8. Click **Submit**
 
 Fiecare colet urmarit este o intrare separata. Poti adauga cate colete doresti.
 
-### Pas 2: Configureaza Optiuni (Optional)
+### Optiunea 2: Configureaza Scanner Email (IMAP)
+
+1. In Home Assistant, mergi la **Settings -> Devices & Services**
+2. Click pe **+ Add Integration**
+3. Cauta "**Colete**"
+4. Selecteaza **Set up Email Scanner**
+5. Completeaza datele serverului IMAP:
+
+| Camp | Descriere | Exemplu |
+|------|-----------|---------|
+| IMAP Server | Adresa serverului IMAP | `imap.gmail.com` |
+| IMAP Port | Port SSL (implicit 993) | `993` |
+| Email | Adresa de email | `user@gmail.com` |
+| Password | Parola sau App Password | (vezi nota mai jos) |
+| Folder | Folderul de scanat (implicit INBOX) | `INBOX` |
+| Lookback Days | Cate zile in urma sa caute (implicit 7) | `7` |
+| Scan Interval | Frecventa scanarii in secunde (implicit 300 = 5 min) | `300` |
+
+6. Click **Submit** — integrarea va verifica conexiunea IMAP inainte de salvare
+
+> **Gmail**: Trebuie sa folosesti un **App Password**, nu parola contului. Genereaza unul din:
+> [Google Account > Security > App Passwords](https://myaccount.google.com/apppasswords)
+> (necesita 2FA activat pe cont)
+
+> **Outlook/Hotmail**: Activeaza IMAP din setarile contului si foloseste App Password daca ai 2FA.
+
+### Configureaza Optiuni (Optional)
 
 1. Mergi la **Settings -> Devices & Services -> Colete -> Configure** (pe intrarea dorita)
-2. Modifica numele prietenos, intervalul de actualizare sau zilele de retentie
+2. **Pentru colete**: Modifica numele prietenos, intervalul de actualizare sau zilele de retentie
+3. **Pentru scanner IMAP**: Modifica folderul, zilele lookback sau intervalul de scanare
 
-### Pas 3: Verifica Senzorii Creati
+### Verifica Senzorii Creati
 
-Dupa configurare, pentru fiecare colet vei avea 4 senzori:
+Dupa configurare, **pentru fiecare colet** vei avea 4 senzori:
 
 | Senzor | Descriere | Exemplu Valoare |
 |--------|-----------|-----------------|
@@ -99,6 +140,14 @@ Dupa configurare, pentru fiecare colet vei avea 4 senzori:
 | Location | Ultima locatie cunoscuta | Bucuresti - Hub Sortare |
 | Last Update | Data ultimei actualizari | 2026-03-15 14:30 |
 | Delivery | Starea livrarii | Pending / Ready for Pickup / Delivered |
+
+**Pentru scanner-ul IMAP** vei avea 3 senzori:
+
+| Senzor | Descriere | Exemplu Valoare |
+|--------|-----------|-----------------|
+| Scanner Status | Starea scanner-ului | connected / scanning / error |
+| Last Scan | Timestamp-ul ultimei scanari | 2026-03-20 10:15 |
+| AWBs Found | Numarul total de AWB-uri gasite | 5 |
 
 ### Statusuri Normalizate
 
@@ -205,7 +254,11 @@ actions:
         este disponibil pentru ridicare.
 ```
 
-#### Adauga Colet din Email (cu Automatizare)
+#### Adauga Colet din Email (Automat cu IMAP Scanner)
+
+Scanner-ul IMAP se ocupa automat de aceasta functionalitate. Configureaza scanner-ul email (vezi sectiunea Configurare) si coletele vor fi adaugate automat cand primesti email-uri de expediere cu numere AWB.
+
+Daca preferi o abordare manuala cu event-uri custom:
 
 ```yaml
 alias: "Track Parcel from Email"
@@ -298,13 +351,15 @@ entities:
 
 ```
 custom_components/colete/
-  __init__.py           # Entry point, service registration
+  __init__.py           # Entry point, service registration, IMAP/parcel routing
   manifest.json         # Metadata integrare
-  const.py              # Constante, statusuri, configuratie senzori
+  const.py              # Constante, statusuri, configuratie senzori, IMAP patterns
   api.py                # Client API multi-curier
-  coordinator.py        # Data Update Coordinator
-  config_flow.py        # Configurare UI + service flow
-  sensor.py             # Entitati senzor (4 per colet)
+  coordinator.py        # Data Update Coordinator (colete)
+  imap_scanner.py       # Scanner IMAP — conectare, cautare, extractie AWB
+  imap_coordinator.py   # IMAP Data Update Coordinator cu deduplicare persistenta
+  config_flow.py        # Configurare UI (meniu, colet, IMAP) + service flow
+  sensor.py             # Entitati senzor (4 per colet + 3 per scanner IMAP)
   services.yaml         # Definitie serviciu track_parcel
   strings.json          # Stringuri traducere (EN)
   translations/
@@ -348,3 +403,4 @@ If you find this project useful, consider buying me a coffee!
 
 *Aceasta integrare nu este afiliata oficial cu Sameday, FAN Courier, Cargus, GLS sau DPD.*
 *Datele sunt furnizate prin API-uri publice ale curierilor.*
+*Functionalitatea IMAP necesita acces la o casuta de email — credentialele sunt stocate local in Home Assistant.*
