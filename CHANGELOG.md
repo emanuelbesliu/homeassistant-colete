@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.2](https://github.com/emanuelbesliu/homeassistant-colete/compare/v1.6.1...v1.6.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* resolve three critical IMAP bugs (service registration, transient error handling, startup blocking) ([07670dd](https://github.com/emanuelbesliu/homeassistant-colete/commit/07670ddb549be26b1f79f03478c018ad48c04259))
+
 ## [1.6.2] (2026-03-20)
 
 
