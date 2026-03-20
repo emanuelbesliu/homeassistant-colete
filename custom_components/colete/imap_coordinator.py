@@ -1,9 +1,12 @@
 """Data update coordinator for IMAP email scanning.
 
 Periodically scans an IMAP mailbox for shipping notification emails,
-extracts AWB numbers, and creates tracked parcels via the existing
-colete.track_parcel service flow.
+extracts AWB numbers, and creates tracked parcels by calling the
+ColeteAPI directly (not via the track_parcel service) so that we can
+distinguish permanent "AWB not found" errors from transient failures.
 """
+
+from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
@@ -17,8 +20,11 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+from .api import ColeteAPI, ColeteApiError, ColeteNotFoundError
 from .const import (
     CONF_AWB,
+    CONF_COURIER,
+    CONF_FRIENDLY_NAME,
     CONF_IMAP_EMAIL,
     CONF_IMAP_FOLDER,
     CONF_IMAP_LOOKBACK_DAYS,
@@ -26,10 +32,13 @@ from .const import (
     CONF_IMAP_PORT,
     CONF_IMAP_SCAN_INTERVAL,
     CONF_IMAP_SERVER,
+    CONF_UPDATE_INTERVAL,
     COURIER_AUTO,
+    COURIERS,
     DEFAULT_IMAP_FOLDER,
     DEFAULT_IMAP_LOOKBACK_DAYS,
     DEFAULT_IMAP_SCAN_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     IMAP_STORAGE_KEY,
     IMAP_STORAGE_VERSION,
@@ -129,10 +138,16 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ),
         )
 
-    async def _async_track_awb(self, extracted: ExtractedAwb) -> bool:
-        """Attempt to track a newly discovered AWB.
+    async def _async_track_awb(self, extracted: ExtractedAwb) -> str:
+        """Attempt to validate and track a newly discovered AWB.
 
-        Returns True if tracking was initiated, False if AWB was invalid.
+        Calls ColeteAPI.validate_awb() directly (not via service) so we can
+        distinguish permanent "AWB not found" errors from transient failures.
+
+        Returns:
+            "tracked"  — AWB validated and config entry creation initiated.
+            "invalid"  — AWB does not exist on any supported courier (permanent).
+            "pending"  — Transient error (network, API down); will retry next scan.
         """
         awb = extracted.awb
         courier = extracted.courier_hint if extracted.courier_hint != "auto" else "auto"
@@ -145,27 +160,53 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             extracted.subject[:60],
         )
 
-        # Use the track_parcel service to create the entry
-        # This handles validation, auto-detect, and config entry creation
+        # Check if already tracked (race condition guard — another scan may
+        # have created the entry between our check in _async_update_data and now)
+        for existing_entry in self.hass.config_entries.async_entries(DOMAIN):
+            if existing_entry.data.get(CONF_AWB) == awb:
+                _LOGGER.debug("AWB %s is already tracked, skipping", awb)
+                return "tracked"
+
+        # Validate AWB directly via the API
+        api = ColeteAPI()
         try:
-            await self.hass.services.async_call(
-                DOMAIN,
-                "track_parcel",
-                {
-                    "awb": awb,
-                    "courier": courier,
-                    "friendly_name": "",
-                },
-                blocking=True,
+            result = await self.hass.async_add_executor_job(
+                api.validate_awb, courier, awb
             )
-            return True
+            detected_courier = result.get("courier", courier)
+        except ColeteNotFoundError:
+            _LOGGER.debug("AWB %s not found on any courier (invalid)", awb)
+            return "invalid"
+        except ColeteApiError as err:
+            _LOGGER.warning(
+                "Transient API error validating AWB %s, will retry: %s", awb, err
+            )
+            return "pending"
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug(
-                "AWB %s could not be tracked (invalid or API error): %s",
-                awb,
-                err,
+            _LOGGER.warning(
+                "Unexpected error validating AWB %s, will retry: %s", awb, err
             )
-            return False
+            return "pending"
+        finally:
+            await self.hass.async_add_executor_job(api.close)
+
+        # AWB is valid — create a config entry via the config flow
+        courier_name = COURIERS.get(detected_courier, detected_courier)
+        _LOGGER.info(
+            "AWB %s validated on %s, creating config entry", awb, courier_name
+        )
+
+        await self.hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "service"},
+            data={
+                CONF_COURIER: detected_courier,
+                CONF_AWB: awb,
+                CONF_FRIENDLY_NAME: "",
+                CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
+            },
+        )
+        return "tracked"
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Scan IMAP and process any new AWBs found."""
@@ -214,14 +255,20 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Try to track each new AWB
         newly_tracked = 0
         for extracted in new_awbs:
-            success = await self._async_track_awb(extracted)
-            self._seen_awbs[extracted.awb] = {
-                "status": "tracked" if success else "invalid",
-                "first_seen": now.isoformat(),
-            }
-            if success:
+            status = await self._async_track_awb(extracted)
+            if status == "tracked":
+                self._seen_awbs[extracted.awb] = {
+                    "status": "tracked",
+                    "first_seen": now.isoformat(),
+                }
                 newly_tracked += 1
                 self._total_awbs_found += 1
+            elif status == "invalid":
+                self._seen_awbs[extracted.awb] = {
+                    "status": "invalid",
+                    "first_seen": now.isoformat(),
+                }
+            # status == "pending": do NOT add to _seen_awbs — retry next scan
 
         # Persist state (save if we processed any new UIDs or found new AWBs)
         if scan_result.scanned_uids or new_awbs:

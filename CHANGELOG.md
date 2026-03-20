@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.2] (2026-03-20)
+
+
+### Bug Fixes
+
+* fix track_parcel service not registered when IMAP entry loads before any parcel entry — service registration now happens for any entry type
+* fix transient API errors (timeouts, network issues) permanently blacklisting valid AWBs as "invalid" — refactored to call ColeteAPI directly with three-way error handling (tracked/invalid/pending); only ColeteNotFoundError marks AWB as invalid, transient errors retry on next scan
+* fix IMAP scan blocking HA startup — replaced async_config_entry_first_refresh() with async_set_updated_data() providing initial "waiting" state; first real scan deferred to normal schedule interval
+
 ## [1.6.1] (2026-03-20)
 
 

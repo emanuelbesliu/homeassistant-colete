@@ -15,6 +15,7 @@ from .const import (
     CONF_COURIER,
     CONF_ENTRY_TYPE,
     CONF_FRIENDLY_NAME,
+    CONF_IMAP_EMAIL,
     CONF_IMAP_SERVER,
     CONF_UPDATE_INTERVAL,
     COURIER_AUTO,
@@ -52,16 +53,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Colete from a config entry (parcel or IMAP scanner)."""
     hass.data.setdefault(DOMAIN, {})
 
+    # Register the track_parcel service on the first entry of ANY type.
+    # This must happen before IMAP setup because the IMAP coordinator
+    # calls this service to create parcel entries from discovered AWBs.
+    _async_register_track_parcel_service(hass)
+
     if _is_imap_entry(entry):
         return await _async_setup_imap_entry(hass, entry)
     return await _async_setup_parcel_entry(hass, entry)
 
 
 async def _async_setup_imap_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up an IMAP email scanner entry."""
+    """Set up an IMAP email scanner entry.
+
+    Unlike parcel entries, the first IMAP scan is deferred (not run during
+    HA startup) to avoid blocking startup with IMAP connections and AWB
+    validation API calls.  The coordinator is set up immediately so that
+    sensors are created, and the first actual scan is scheduled after a
+    short delay once HA is fully loaded.
+    """
     coordinator = ImapDataUpdateCoordinator(hass, entry)
     await coordinator.async_load_seen_awbs()
-    await coordinator.async_config_entry_first_refresh()
+
+    # Do NOT call async_config_entry_first_refresh() here.
+    # That would run a full IMAP scan (connect, download, extract, validate
+    # each AWB against courier APIs) synchronously during HA startup.
+    # Instead, provide initial data for sensors and schedule the first scan
+    # to run after HA has finished starting up.
+    coordinator.async_set_updated_data(
+        {
+            "status": "waiting",
+            "last_scan": None,
+            "emails_scanned": 0,
+            "awbs_found_this_scan": 0,
+            "new_awbs_tracked": 0,
+            "total_awbs_found": coordinator._total_awbs_found,
+            "last_error": None,
+            "email": entry.data.get(CONF_IMAP_EMAIL, ""),
+        }
+    )
 
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
@@ -91,57 +121,60 @@ async def _async_setup_parcel_entry(hass: HomeAssistant, entry: ConfigEntry) -> 
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    # Register the track_parcel service (only once, on first entry)
-    if not hass.services.has_service(DOMAIN, SERVICE_TRACK_PARCEL):
+    return True
 
-        async def handle_track_parcel(call: ServiceCall) -> None:
-            """Handle the colete.track_parcel service call."""
-            awb = call.data[CONF_AWB].strip()
-            courier = call.data.get(CONF_COURIER, COURIER_AUTO)
-            friendly_name = call.data.get(CONF_FRIENDLY_NAME, "").strip()
 
-            # Check if already tracked
-            for existing_entry in hass.config_entries.async_entries(DOMAIN):
-                if existing_entry.data.get(CONF_AWB) == awb:
-                    _LOGGER.warning("AWB %s is already being tracked", awb)
-                    return
+def _async_register_track_parcel_service(hass: HomeAssistant) -> None:
+    """Register the colete.track_parcel service (idempotent — skips if already registered)."""
+    if hass.services.has_service(DOMAIN, SERVICE_TRACK_PARCEL):
+        return
 
-            # Validate AWB before creating config entry
-            api = ColeteAPI()
-            try:
-                result = await hass.async_add_executor_job(
-                    api.validate_awb, courier, awb
-                )
-                detected_courier = result.get("courier", courier)
-            except (ColeteNotFoundError, ColeteApiError) as err:
-                _LOGGER.error("Failed to track AWB %s: %s", awb, err)
+    async def handle_track_parcel(call: ServiceCall) -> None:
+        """Handle the colete.track_parcel service call."""
+        awb = call.data[CONF_AWB].strip()
+        courier = call.data.get(CONF_COURIER, COURIER_AUTO)
+        friendly_name = call.data.get(CONF_FRIENDLY_NAME, "").strip()
+
+        # Check if already tracked
+        for existing_entry in hass.config_entries.async_entries(DOMAIN):
+            if existing_entry.data.get(CONF_AWB) == awb:
+                _LOGGER.warning("AWB %s is already being tracked", awb)
                 return
-            finally:
-                api.close()
 
-            # Create a new config entry programmatically
-            courier_name = COURIERS.get(detected_courier, detected_courier)
-            title = friendly_name if friendly_name else f"{courier_name} {awb}"
-
-            await hass.config_entries.flow.async_init(
-                DOMAIN,
-                context={"source": "service"},
-                data={
-                    CONF_COURIER: detected_courier,
-                    CONF_AWB: awb,
-                    CONF_FRIENDLY_NAME: friendly_name,
-                    CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
-                },
+        # Validate AWB before creating config entry
+        api = ColeteAPI()
+        try:
+            result = await hass.async_add_executor_job(
+                api.validate_awb, courier, awb
             )
+            detected_courier = result.get("courier", courier)
+        except (ColeteNotFoundError, ColeteApiError) as err:
+            _LOGGER.error("Failed to track AWB %s: %s", awb, err)
+            return
+        finally:
+            api.close()
 
-        hass.services.async_register(
+        # Create a new config entry programmatically
+        courier_name = COURIERS.get(detected_courier, detected_courier)
+        title = friendly_name if friendly_name else f"{courier_name} {awb}"
+
+        await hass.config_entries.flow.async_init(
             DOMAIN,
-            SERVICE_TRACK_PARCEL,
-            handle_track_parcel,
-            schema=SERVICE_TRACK_PARCEL_SCHEMA,
+            context={"source": "service"},
+            data={
+                CONF_COURIER: detected_courier,
+                CONF_AWB: awb,
+                CONF_FRIENDLY_NAME: friendly_name,
+                CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
+            },
         )
 
-    return True
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_TRACK_PARCEL,
+        handle_track_parcel,
+        schema=SERVICE_TRACK_PARCEL_SCHEMA,
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
