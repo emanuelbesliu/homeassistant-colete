@@ -94,6 +94,7 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._seen_awbs = data.get("seen_awbs", {})
             self._processed_uids = set(data.get("processed_uids", []))
             self._total_awbs_found = data.get("total_awbs_found", 0)
+            self._last_scan_time = data.get("last_scan_time")
             _LOGGER.debug(
                 "Loaded %d seen AWBs, %d processed UIDs from storage",
                 len(self._seen_awbs),
@@ -107,6 +108,7 @@ class ImapDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "seen_awbs": self._seen_awbs,
                 "processed_uids": list(self._processed_uids),
                 "total_awbs_found": self._total_awbs_found,
+                "last_scan_time": self._last_scan_time,
             }
         )
 

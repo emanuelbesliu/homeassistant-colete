@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.3] (2026-03-20)
+
+
+### Bug Fixes
+
+* persist last scan timestamp in storage so the Last Scan sensor retains its value across HA restarts instead of showing "Unknown"
+
 ## [1.6.2] (2026-03-20)
 
 

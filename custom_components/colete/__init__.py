@@ -83,7 +83,7 @@ async def _async_setup_imap_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
     coordinator.async_set_updated_data(
         {
             "status": "waiting",
-            "last_scan": None,
+            "last_scan": coordinator._last_scan_time,
             "emails_scanned": 0,
             "awbs_found_this_scan": 0,
             "new_awbs_tracked": 0,
